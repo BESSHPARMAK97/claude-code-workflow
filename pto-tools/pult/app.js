@@ -2,7 +2,8 @@
 (function () {
   "use strict";
   var TOOLS = [
-    { id: "aosr", title: "Акты и журналы", takesFiles: true, what: "реестр работ" },
+    // «Окно объекта» — генератор АОСР в режиме ввода данных (okno/okno.js): данные объекта, акты и журнал
+    { id: "aosr", title: "Окно объекта", takesFiles: true, what: "реестр работ", name: "okno" },
     { id: "journal", title: "Журнал работ", takesFiles: false },
     { id: "forms", title: "Формы 2 и 3", takesFiles: true, what: "план-факт" }
   ];
@@ -35,7 +36,7 @@
     TOOLS.forEach(function (t) {
       if (!window.PULT_APPS[t.id]) return;   // инструмент не собран — вкладки нет
       var f = document.createElement("iframe");
-      f.title = t.title; f.hidden = true;
+      f.title = t.title; f.hidden = true; if (t.name) f.name = t.name;
       $("frames").appendChild(f);
       frames[t.id] = f;
       var b = document.createElement("button");
@@ -80,6 +81,7 @@
         status("«" + pending.name + "» не распознан: нужен реестр работ (лист «Работы») или план-факт (листы «Смета» и «Выполнение»).", "bad");
     } else if (d.type === "pto-journal-updated" && frames.journal) {
       load("journal");   // журнал перечитает данные из хранилища браузера
+      if (d.quiet) return;   // окно объекта обновляет журнал при каждой правке — без сообщений
       if (current !== "journal" && !buttons.journal.querySelector(".dot")) {
         var dot = document.createElement("span"); dot.className = "dot"; dot.title = "обновлён";
         buttons.journal.appendChild(dot);

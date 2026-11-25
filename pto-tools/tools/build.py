@@ -42,7 +42,8 @@ def main():
         ("/*LIB_DT*/", js(BUILD / "dt.bundle.js")),
         ("/*DATA*/", f'window.AOSR_TEMPLATE_B64="{b64(ROOT / "aosr" / "template.docx")}";'
                      f'window.AOSR_REGISTRY_B64="{b64(ROOT / "aosr" / "реестр_работ.xlsx")}";'),
-        ("/*APP*/", js(ROOT / "aosr" / "app.js")),
+        # окно объекта включается только во вкладке пульта (window.name === "okno")
+        ("/*APP*/", js(ROOT / "aosr" / "app.js") + "\n" + js(ROOT / "okno" / "okno.js")),
     ])
     (DIST / "Генератор_АОСР.html").write_text(aosr, encoding="utf-8")
 

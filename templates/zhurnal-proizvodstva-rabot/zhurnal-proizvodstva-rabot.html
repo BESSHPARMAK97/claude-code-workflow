@@ -80,6 +80,8 @@ table.ed tr.example td{background:var(--example)!important}
 table.ed tr.example td,table.ed tr.example td input,table.ed tr.example td textarea,table.ed tr.example td select{color:var(--example-fg);font-style:italic}
 td.alert{background:var(--alert)!important;color:var(--alert-fg)!important;font-weight:600}
 td.okc{color:var(--ok)!important}
+.lockbar{max-width:1400px;margin:10px auto 0;padding:10px 14px;border-radius:8px;background:var(--accent-soft);border:1px solid var(--line);font-size:14px}
+.lockbar button{margin-left:8px}
 .lnk{display:inline-block;margin:2px 4px 0 0;padding:1px 7px;font-size:12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--accent);cursor:pointer}
 .lnk:hover{border-color:var(--accent)}
 table.ed tr.hl td{box-shadow:inset 0 0 0 9999px color-mix(in srgb,var(--accent) 16%,transparent)}
@@ -602,6 +604,26 @@ bNew.onclick=()=>{
   delete bNew.dataset.armed; bNew.textContent="Новый журнал";
   state=blank(); persist(); current="t"; renderTabs(); renderMain(); toast("Создан пустой журнал");
 };
+
+/* ---------- журнал, собранный «Окном объекта» ПТО-пульта: только просмотр, печать, сохранение ---------- */
+const locked=()=>!!(state.meta&&state.meta.source==="okno");
+function applyLock(){
+  const on=locked(), inPult=window.parent!==window;
+  let b=document.getElementById("lockBar");
+  if(on&&!b){ b=document.createElement("div"); b.id="lockBar"; b.className="lockbar"; document.querySelector("header.top").after(b) }
+  if(b){ b.hidden=!on; if(on) b.innerHTML=`<strong>Журнал собирается из «Окна объекта».</strong> Здесь — просмотр, печать и сохранение; данные правьте в окне${inPult?" (вкладка «Окно объекта»)":" ПТО-пульта"}.`+
+    (inPult?"":`<button id="bUnlock" title="Журнал перестанет обновляться из окна объекта">Вести журнал здесь вручную</button>`) }
+  ["bOpen","bNew"].forEach(id=>{ document.getElementById(id).hidden=on });
+  if(!on) return;
+  mainEl.querySelectorAll("input,textarea,select").forEach(x=>{ x.disabled=true });
+  mainEl.querySelectorAll("#bAdd,#bCopy,#bSort,.rowdel").forEach(x=>{ x.hidden=true });
+}
+const renderMain0=renderMain;
+renderMain=function(){ renderMain0(); applyLock() };
+document.addEventListener("click",e=>{
+  if(e.target.id!=="bUnlock") return;
+  state.meta.source="manual"; persist(); renderTabs(); renderMain(); toast("Журнал ведётся здесь вручную");
+});
 
 renderTabs(); renderMain();
 </script>

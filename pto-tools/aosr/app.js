@@ -718,6 +718,8 @@
         var wb = XLSX.read(new Uint8Array(reader.result), { type: "array" });
         if (opts.pult && !wb.Sheets["Работы"]) { tellPult({ type: "pto-ignored" }); return; }
         tellPult({ type: "pto-handled" }); handled = true;
+        // в «Окне объекта» реестр из пульта загружается в окно, акты собираются кнопкой
+        if (opts.pult && window.OKNO_IMPORT) { window.OKNO_IMPORT(wb, file.name); return; }
         $("extra").hidden = true; last = null;
         var data = load(wb);
         var stats = prepare(data);
@@ -740,7 +742,7 @@
         };
         download(last.kit, "Комплект_АОСР.docx", DOCX);
         $("extra").hidden = false;
-        if (window.parent !== window) pushJournal(true);   // в пульте журнал обновляется сам
+        if (window.parent !== window && !opts.okno) pushJournal(true);   // в пульте журнал обновляется сам (окно объекта ведёт журнал само)
       } catch (e) {
         if (opts.pult && !handled) { tellPult({ type: "pto-ignored" }); return; }
         var msg = e && e.properties && e.properties.errors
@@ -751,6 +753,14 @@
     };
     reader.readAsArrayBuffer(file);
   }
+
+  // для «Окна объекта» (okno/okno.js): те же разбор, проверки и сборка, что у генератора
+  window.AOSR_CORE = {
+    load: load, prepare: prepare, validate: validate, journalFromRegistry: journalFromRegistry, process: process,
+    reportLines: reportLines, showReport: showReport, guessJr: guessJr, shortName: shortName, clean: clean, norm: norm,
+    toDate: toDate, iso: iso, fmtShort: fmtShort, isBN: isBN, download: download, b64ToBytes: b64ToBytes, XLSXT: XLSXT,
+    TITLE_KEYS: TITLE_KEYS
+  };
 
   document.addEventListener("DOMContentLoaded", function () {
     var drop = $("drop"), input = $("file");
