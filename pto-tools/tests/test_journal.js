@@ -33,12 +33,16 @@ const JOURNAL = path.resolve(ROOT, '../templates/zhurnal-proizvodstva-rabot/zhur
   mine.s4[0].weather = 'Ясно, -2';
   mine.s4 = mine.s4.filter(r => !/гидроизоляц/i.test(r.work));
   mine.s3.find(a => a.no === 'АОСР-004/26').date = '2026-03-27';
+  mine.s4.forEach(r => { delete r.aosr; });   // журнал, заведённый до связи с актами
+  mine.s4[0].aosr = 'вручную';                 // номер, вписанный пользователем, не трогаем
   fs.writeFileSync(path.join(tmp, 'mine.json'), JSON.stringify(mine));
   dl = p.waitForEvent('download'); await p.setInputFiles('#jr-upd', path.join(tmp, 'mine.json')); await (await dl).saveAs(path.join(tmp, 'upd.json'));
   const rep = await p.evaluate(() => document.getElementById('report').innerText);
   const upd = JSON.parse(fs.readFileSync(path.join(tmp, 'upd.json'), 'utf8'));
   check(upd.s4.some(r => r.weather === 'Ясно, -2') && upd.s3.find(a => a.no === 'АОСР-004/26').date === '2026-03-27', 'дополнение не перезаписывает ручные данные');
   check(upd.s4.length === 6, 'недостающая запись о работах добавлена');
+  check(upd.s4[0].aosr === 'вручную' && upd.s4.slice(1).every(r => r.aosr) && /связано записей с актами \+4/.test(rep),
+    'старый журнал: записи связаны с актами, ручной номер не изменён');
   check(/АОСР-003\/26: в журнале нет записей/.test(rep) && /АОСР-004\/26: в журнале дата 27\.03\.2026, в реестре 26\.03\.2026/.test(rep), 'сверка находит расхождения');
   if (errs.length) { bad++; console.log('Ошибки JS:', errs); }
   await b.close(); process.exit(bad ? 1 : 0);

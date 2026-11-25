@@ -80,6 +80,9 @@ table.ed tr.example td{background:var(--example)!important}
 table.ed tr.example td,table.ed tr.example td input,table.ed tr.example td textarea,table.ed tr.example td select{color:var(--example-fg);font-style:italic}
 td.alert{background:var(--alert)!important;color:var(--alert-fg)!important;font-weight:600}
 td.okc{color:var(--ok)!important}
+.lnk{display:inline-block;margin:2px 4px 0 0;padding:1px 7px;font-size:12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--accent);cursor:pointer}
+.lnk:hover{border-color:var(--accent)}
+table.ed tr.hl td{box-shadow:inset 0 0 0 9999px color-mix(in srgb,var(--accent) 16%,transparent)}
 .rowdel{border:none;background:none;color:var(--muted);padding:6px;font-size:16px;line-height:1}
 .rowdel:hover{color:var(--alert-fg)}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
@@ -183,10 +186,11 @@ const SECTIONS=[
  {id:"s3",short:"3. Акты",title:"Раздел 3. Перечень актов освидетельствования скрытых работ и промежуточной приёмки ответственных конструкций",
   hint:"Акты оформляются по формам приложений Д и Е СН РК 1.03-00-2022; здесь ведётся их перечень.",
   cols:[["no","№ акта",8],["name","Наименование акта (вид работ, конструкция, место: оси, отметки)",38,"a"],["date","Дата подписания",11,"d"],
-        ["who","Кто подписал (подрядчик / технадзор / автонадзор)",22],["note","Примечание",15]]},
+        ["who","Кто подписал (подрядчик / технадзор / автонадзор)",22],["note","Примечание",15],
+        ["recs","Записи в разделе 4",12,"calc",r=>recsOf(r).map(x=>fmtDate(x.date)).join(", "),{noPrint:true}]]},
  {id:"s4",short:"4. Производство работ",title:"Раздел 4. Сведения о производстве работ",
   hint:"Заполняется ежедневно по сменам. Столбец «В спецжурнал» определяется сам по описанию работ («бетонирование», «сварка», «антикоррозионная защита», «огрунтовка» и т. п.) — запись переносится в соответствующий спецжурнал. Если определилось неверно, выберите вручную.",
-  cols:[["date","Дата",9,"d"],["shift","Смена",5,"s",["","1","2","3"]],["jr","В спецжурнал",11,"s",JR_OPTS,{noPrint:true}],
+  cols:[["date","Дата",9,"d"],["shift","Смена",5,"s",["","1","2","3"]],["jr","В спецжурнал",11,"s",JR_OPTS,{noPrint:true}],["aosr","АОСР №",7,"",null,{noPrint:true}],
         ["work","Наименование и описание работ, конструкция, методы производства",24,"a"],["place","Место (оси, отметки, этаж)",12],
         ["unit","Ед. изм.",6,"s",["","м³","м²","м","т","шт","компл"]],["vol","Объём",6,"n"],["temp","t воздуха, °C",6,"n"],
         ["weather","Погодные условия",9],["exec","Исполнитель (организация, бригада)",12],["resp","Ответственный: Ф.И.О., подпись",11]]},
@@ -298,6 +302,11 @@ if(!state) state=sample();
 let saveT;
 function persist(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){} },300) }
 
+/* связь раздела 4 с актами раздела 3: в записи — номер(а) акта через запятую */
+const normNo=v=>String(v??"").toLowerCase().replace(/№|\s/g,"");
+const aosrNos=r=>String(r.aosr??"").split(/[,;]/).map(normNo).filter(Boolean);
+function recsOf(act){ const n=normNo(act.no); return n?state.s4.filter(r=>aosrNos(r).includes(n)):[] }
+function actOf(no){ return state.s3.find(a=>normNo(a.no)===no) }
 /* строки журналов бетона = записи раздела 4 с видом «Бетонные работы» */
 function kindRows(kind){ return state.s4.filter(r=>r.jr===kind&&r.date) }
 function jrows(j){ return kindRows(j.kind).map(src=>({src,own:(state[j.id][src._id] ||= {}),_ex:src._ex})) }
@@ -363,10 +372,12 @@ function renderMain(){
       if(t==="src"||t==="calc"){
         const v=sec?(t==="calc"?c[4](r):""):cellValue(c,r);
         const shown=c[3]==="src"&&c[0]==="date"?fmtDate(v):(c[0]==="vol"||c[0]==="temp")?fmtNum(v):v;
+        if(sec&&c[0]==="recs"){ const rs=recsOf(r);
+          return `<td class="auto">${rs.length?rs.map(x=>`<button type="button" class="lnk" data-goto="s4" data-id="${esc(x._id)}" title="Открыть запись в разделе 4">${esc(fmtDate(x.date)||"без даты")}</button>`).join(""):"—"}</td>` }
         return `<td class="auto ${alertClass(def,c[0],v,r)}">${esc(shown)}</td>`;
       }
       const val=sec?(r[c[0]]??""):(r.own[c[0]]??"");
-      return `<td>${control(c,val,`${def.id}-${i}-${c[0]}`,`data-r="${i}"`)}</td>`;
+      return `<td>${control(c,val,`${def.id}-${i}-${c[0]}`,`data-r="${i}"`)}${sec&&c[0]==="aosr"?actLinks(r):""}</td>`;
     }).join("")}${sec?`<td><button class="rowdel" data-del="${i}" title="Удалить строку" aria-label="Удалить строку ${i+1}">×</button></td>`:""}</tr>`+(sec&&sec.id==="s4"?subRow(r,def.cols.length+2):"");
   }).join("");
   const emptyMsg=sec?"Записей пока нет. Нажмите «Добавить запись».":`Здесь появятся записи раздела 4 с отметкой «${jr.kind}» в столбце «В спецжурнал».`;
@@ -380,6 +391,13 @@ function renderMain(){
     </div><div class="checks" id="checks"></div></section>`;
   renderChecks();
   mainEl.querySelectorAll("td textarea").forEach(autosize);
+}
+function actLinks(r){ return aosrNos(r).map(n=>actOf(n)).filter(Boolean).map(a=>`<button type="button" class="lnk" data-goto="s3" data-no="${esc(normNo(a.no))}" title="Открыть акт в разделе 3">к акту</button>`).join("") }
+function goTo(id,match){
+  current=id; try{localStorage.setItem(KEY+"-tab",current)}catch(_){}
+  renderTabs(); renderMain();
+  const i=state[id].findIndex(match), tr=i<0?null:mainEl.querySelectorAll("tbody > tr:not(.subrow)")[i];
+  if(tr){ tr.classList.add("hl"); tr.scrollIntoView({block:"center"}); setTimeout(()=>tr.classList.remove("hl"),2500) }
 }
 const openSubs=new Set();
 function subRow(r,span){
@@ -410,6 +428,7 @@ function renderChecks(){
       if(!r.date) out.push(`Строка ${i+1}: не указана дата.`);
       if(!r.resp) out.push(`Строка ${i+1}: не указан ответственный.`);
       if(!r.place) out.push(`Строка ${i+1}: не указано место работ (оси, отметки).`);
+      aosrNos(r).forEach(n=>{ if(!actOf(n)) out.push(`Строка ${i+1}: акта № ${String(r.aosr).trim()} нет в разделе 3.`) });
       if(r.jr===CONCRETE&&r.unit&&r.unit!=="м³") out.push(`Строка ${i+1}: для бетонных работ объём указывается в м³.`);
       if(i>0&&r.date&&rows[i-1].date&&r.date<rows[i-1].date) out.push(`Строка ${i+1}: дата раньше предыдущей записи — нарушена хронология.`);
     });}
@@ -455,6 +474,7 @@ function onEdit(e){
   if(sec){ const r=state[sec.id][i]; r[t.dataset.k]=t.value; if(r._ex){delete r._ex; tr.classList.remove("example")}
     if(sec.id==="s4"&&!r._id) r._id=uid();
     if(sec.id==="s4"&&t.dataset.k==="jr"&&e.type==="change"){ r._jrManual=true; updateSub(tr,r); }
+    if(sec.id==="s4"&&t.dataset.k==="aosr"){ t.parentElement.querySelectorAll(".lnk").forEach(x=>x.remove()); t.insertAdjacentHTML("afterend",actLinks(r)); }
     if(sec.id==="s4"&&t.dataset.k==="work"&&!r._jrManual){
       const g=guessJr(r.work);
       if(g!==(r.jr||"")){ r.jr=g; const sel=tr.querySelector('[data-k="jr"]'); if(sel) sel.value=g; renderTabs(); updateSub(tr,r); }
@@ -480,6 +500,8 @@ mainEl.addEventListener("toggle",e=>{ const d=e.target; if(!d.dataset||!d.datase
 mainEl.addEventListener("change",onEdit);
 mainEl.addEventListener("click",e=>{
   if(e.target.closest("#bGo4")){ current="s4"; renderTabs(); renderMain(); return }
+  const g=e.target.closest("[data-goto]");
+  if(g){ g.dataset.goto==="s4"?goTo("s4",r=>r._id===g.dataset.id):goTo("s3",a=>normNo(a.no)===g.dataset.no); return }
   const sec=SECTIONS.find(s=>s.id===current); if(!sec) return;
   const rows=state[sec.id];
   if(e.target.closest("#bAdd")){

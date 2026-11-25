@@ -84,7 +84,9 @@
         var dot = document.createElement("span"); dot.className = "dot"; dot.title = "обновлён";
         buttons.journal.appendChild(dot);
       }
-      status("Журнал работ обновлён данными реестра — вкладка «Журнал работ».", "ok");
+      // сразу после загрузки реестра — дописываем к сообщению о файле, а не заменяем его
+      if (pending && pending.handled && !pending.jr) { pending.jr = true; status($("status").textContent + " Журнал работ обновлён автоматически.", "ok"); }
+      else status("Журнал работ обновлён данными реестра — вкладка «Журнал работ».", "ok");
     }
   });
 
