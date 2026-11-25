@@ -74,14 +74,62 @@ def prev_mk(k):
 
 
 # ---------------------------------------------------------------- загрузка
+def load_registry_receipts(path_value, errors, warns):
+    """Лист «Поступления» реестра: партия -> приход. Код материала = код партии до «-» (M12-1 -> M12)."""
+    p = Path(path_value)
+    if not p.is_absolute():
+        p = (SRC.parent / p).resolve()
+    if not p.exists():
+        errors.append(f"Не найден файл реестра: {p}")
+        return {}, []
+    wb = load_workbook(p, data_only=True)
+    if "Поступления" not in wb.sheetnames:
+        errors.append(f"В реестре {p.name} нет листа «Поступления»")
+        return {}, []
+    ws = wb["Поступления"]
+    head = [clean(c.value).lower() for c in ws[1]]
+
+    def col(prefix):
+        return next((i for i, h in enumerate(head) if h.startswith(prefix)), None)
+
+    ci = {k: col(v) for k, v in (("code", "код"), ("name", "наименование"), ("unit", "ед"), ("qty", "количеств"),
+                                  ("date", "дата поступл"), ("invoice", "№ наклад"), ("price", "цена"))}
+    missing = [k for k in ("code", "name", "qty", "date") if ci[k] is None]
+    if missing:
+        errors.append(f"Реестр, лист «Поступления»: не найдены колонки {', '.join(missing)}")
+        return {}, []
+    mats, receipts = {}, []
+    for i, r in enumerate(ws.iter_rows(min_row=2, values_only=True), start=2):
+        g = lambda k: r[ci[k]] if ci[k] is not None and ci[k] < len(r) else None
+        code = clean(g("code"))
+        if not code:
+            continue
+        key = code.split("-")[0]
+        d, q = to_date(g("date")), num(g("qty"))
+        if key not in mats:
+            mats[key] = {"code": key, "name": clean(g("name")), "unit": clean(g("unit")), "price": num(g("price")) or 0.0}
+        if d is None or q is None:
+            errors.append(f"Реестр, «Поступления», строка {i}: проверьте дату поступления и количество ({code})")
+            continue
+        if not clean(g("invoice")):
+            warns.append(f"Реестр, «Поступления», строка {i}: {mats[key]['name']} ({code}) — нет № накладной")
+        receipts.append({"date": d, "code": key, "qty": q, "doc": clean(g("invoice"))})
+    return mats, receipts
+
+
 def load(errors, warns):
     wb = load_workbook(SRC, data_only=True)
     settings = {clean(r[0]): r[1] for r in wb["Настройки"].iter_rows(min_row=2, values_only=True) if r[0]}
 
-    mats = {}
-    for r in wb["Материалы"].iter_rows(min_row=2, values_only=True):
-        if r[0]:
-            mats[clean(r[0])] = {"code": clean(r[0]), "name": clean(r[1]), "unit": clean(r[2]), "price": num(r[3]) or 0.0}
+    reg_path = clean(settings.get("Файл реестра"))
+    if reg_path:
+        # материалы и приход — из общего листа «Поступления» реестра объекта
+        mats, receipts = load_registry_receipts(reg_path, errors, warns)
+    else:
+        mats, receipts = {}, []
+        for r in wb["Материалы"].iter_rows(min_row=2, values_only=True):
+            if r[0]:
+                mats[clean(r[0])] = {"code": clean(r[0]), "name": clean(r[1]), "unit": clean(r[2]), "price": num(r[3]) or 0.0}
 
     norms = defaultdict(list)
     for i, r in enumerate(wb["Нормы"].iter_rows(min_row=2, values_only=True), start=2):
@@ -92,12 +140,11 @@ def load(errors, warns):
             errors.append(f"Нормы, строка {i}: не заполнен № позиции или норма")
             continue
         if code not in mats:
-            errors.append(f"Нормы, строка {i}: материала «{code}» нет на листе «Материалы»")
+            errors.append(f"Нормы, строка {i}: материала «{code}» нет " + ("в «Поступлениях» реестра" if reg_path else "на листе «Материалы»"))
             continue
         norms[int(pos)].append((code, n))
 
-    receipts = []
-    for i, r in enumerate(wb["Поступление"].iter_rows(min_row=2, values_only=True), start=2):
+    for i, r in enumerate([] if reg_path else wb["Поступление"].iter_rows(min_row=2, values_only=True), start=2):
         if not any(r[:3]):
             continue
         d, code, q = to_date(r[0]), clean(r[1]), num(r[2])
