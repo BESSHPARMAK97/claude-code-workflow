@@ -7,6 +7,7 @@ const CASES = [
   { file: 'tests/fixtures/aosr_без_представителя.xlsx', acts: 4, failed: 1, has: ['не указан «Представитель СМО»', 'представитель СМО не из'] },
   { file: 'tests/fixtures/aosr_ошибки_дат_и_материалов.xlsx', acts: 2, failed: 3, has: ['истёк до начала работ', '«M99» не найден', 'позже окончания'] },
   { file: 'tests/fixtures/aosr_старый_формат.xlsx', acts: 10, failed: 1 },
+  { file: 'tests/fixtures/aosr_поступления_позже_работ.xlsx', acts: 4, failed: 1, has: ['партия M04-2 поступила 20.03.2026 — после начала работ', 'партия M07 поступила 10.04.2026 — после окончания работ'] },
 ];
 (async () => {
   const b = await chromium.launch();

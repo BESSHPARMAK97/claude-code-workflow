@@ -26,8 +26,10 @@
     ["performer", /^исполнитель/i], ["sub_rep", /субподряд/i]
   ];
   var TPL_FIELDS = ["title", "location", "drawings", "materials", "evidence", "deviations", "next_works", "performer", "sub_rep"];
+  // лист «Поступления» (партия + документ о качестве) или старый «Материалы»
   var MAT_SPEC = [
-    ["code", /^код/i], ["name", /^наименование/i], ["doc_type", /^вид/i], ["doc_no", /^№/],
+    ["code", /^код/i], ["name", /^наименование/i], ["unit", /^ед/i], ["qty", /^количеств/i],
+    ["recv", /^дата поступл/i], ["invoice", /^№ наклад/i], ["doc_type", /^вид/i], ["doc_no", /^№/],
     ["date", /^дата/i], ["until", /^действ/i], ["supplier", /^поставщик/i], ["batch", /^парти/i]
   ];
   var REQUIRED = { number: "№ акта", title: "Наименование работ", drawings: "Чертежи", next_works: "Последующие работы" };
@@ -95,13 +97,15 @@
     });
 
     var materials = {};
-    var mr = rows(wb, "Материалы"), mmap = mapHeaders(mr[0] || [], MAT_SPEC);
+    var matSheet = wb.Sheets["Поступления"] ? "Поступления" : "Материалы";
+    var mr = rows(wb, matSheet), mmap = mapHeaders(mr[0] || [], MAT_SPEC);
     if (mmap.code === undefined) { mmap = { code: 0, name: 1, doc_type: 2, doc_no: 3, date: 4, supplier: 5, batch: 6, until: 7 }; }
     mr.slice(1).forEach(function (r) {
       var m = pick(r, mmap);
       if (!clean(m.code)) return;
       materials[clean(m.code)] = { name: clean(m.name), doc_type: clean(m.doc_type), doc_no: clean(m.doc_no), date: toDate(m.date),
-        supplier: clean(m.supplier), batch: clean(m.batch), until: toDate(m.until), untilRaw: m.until };
+        supplier: clean(m.supplier), until: toDate(m.until), untilRaw: m.until, recv: toDate(m.recv), invoice: clean(m.invoice),
+        batch: clean(m.batch) || [clean(m.qty).replace(".", ","), clean(m.unit)].filter(Boolean).join(" ") };
     });
 
     var templates = {}, tr = rows(wb, "Типовые работы", true);
@@ -134,7 +138,7 @@
       w.row = i + 1;
       works.push(w);
     });
-    return { obj: obj, materials: materials, works: works, floors: floors, templates: templates, hasFloors: !!fr,
+    return { obj: obj, materials: materials, matSheet: matSheet, works: works, floors: floors, templates: templates, hasFloors: !!fr,
       header: header, wmap: wmap, loadErrors: loadErrors,
       rowReps: wmap.row_contractor_rep !== undefined || wmap.row_tech_rep !== undefined };
   }
@@ -144,6 +148,15 @@
   // значение для акта: из строки (если заполнено), иначе с листа «Объект»; «нет» — убрать
   function pickRep(rowVal, objVal) { var v = clean(rowVal); if (!v) return objVal || ""; return isNone(v) ? "" : v; }
   function codesOf(w) { return clean(w.materials).split(";").map(function (s) { return s.trim(); }).filter(Boolean); }
+  function batchesOf(data, c) {
+    if (data.materials[c]) return [c];
+    return Object.keys(data.materials).filter(function (k) { return k.indexOf(c + "-") === 0; }).sort();
+  }
+  function matsOf(data, w) {
+    var out = [];
+    codesOf(w).forEach(function (c) { batchesOf(data, c).forEach(function (k) { if (out.indexOf(k) < 0) out.push(k); }); });
+    return out.map(function (k) { return data.materials[k]; });
+  }
   function isBN(num) { return /^б\/н$/i.test(clean(num)); }   // «б/н» — заготовка без номера
 
   // «Блок 1, этажи 1–3, 5» -> {prefix: "Блок 1", floors: ["1","2","3","5"]}
@@ -282,9 +295,16 @@
       });
       var codes = codesOf(w);
       if (!codes.length) warn(r, "не указаны материалы");
-      codes.forEach(function (c) {
+      var all = [];
+      codes.forEach(function (c0) {
+        var list = batchesOf(data, c0);
+        if (!list.length) err(r, "материал «" + c0 + "» не найден на листе «" + data.matSheet + "»");
+        list.forEach(function (k) { if (all.indexOf(k) < 0) all.push(k); });
+      });
+      all.forEach(function (c) {
         var m = data.materials[c];
-        if (!m) { err(r, "материал «" + c + "» не найден на листе «Материалы»"); return; }
+        if (m.recv && e && key(m.recv) > key(e)) err(r, "партия " + c + " поступила " + fmtShort(m.recv) + " — после окончания работ " + fmtShort(e));
+        else if (m.recv && s && key(m.recv) > key(s)) warn(r, "партия " + c + " поступила " + fmtShort(m.recv) + " — после начала работ " + fmtShort(s));
         if (!m.doc_no || !m.date) err(r, "у материала " + c + " нет номера или даты документа о качестве");
         else if (d && key(m.date) > key(d)) err(r, "документ на " + c + " (" + m.doc_no + ") датирован " + fmtShort(m.date) + " — позже акта");
         else if (!d && e && key(m.date) > key(e)) err(r, "документ на " + c + " (" + m.doc_no + ") датирован " + fmtShort(m.date) + " — позже окончания работ");
@@ -354,7 +374,7 @@
     data.works.forEach(function (w) {
       if (!w.sel || check.errors[w.id]) return;
       var d = toDate(w.date), s = toDate(w.start), e = toDate(w.end);
-      var matList = codesOf(w).map(function (c) { return data.materials[c]; });
+      var matList = matsOf(data, w);
       var mats = matList.map(function (m) { return m.name + ", " + m.doc_type + " № " + m.doc_no + " от " + fmtShort(m.date); });
       var toAppendix = over > 0 && matList.length > over;
       var title = clean(w.title), loc = clean(w.location), sub = clean(w.sub_rep);
