@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ПТО-пульт</title>
+<style>
+:root {
+  --bg: #f5f6f8; --card: #ffffff; --text: #1d2430; --muted: #5d6675; --line: #d9dde4;
+  --accent: #2f5597; --accent-soft: #e8eef8; --ok: #2b7a3d; --bad: #b42318;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #14171c; --card: #1d2128; --text: #e6e9ee; --muted: #9aa3b2; --line: #333a45;
+    --accent: #6f9be0; --accent-soft: #233149; --ok: #7bd38e; --bad: #ff8a7a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #14171c; --card: #1d2128; --text: #e6e9ee; --muted: #9aa3b2; --line: #333a45;
+  --accent: #6f9be0; --accent-soft: #233149; --ok: #7bd38e; --bad: #ff8a7a;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 15px/1.5 "Segoe UI", system-ui, -apple-system, Roboto, Arial, sans-serif;
+       display: flex; flex-direction: column; }
+header { background: var(--card); border-bottom: 1px solid var(--line); padding: 12px 16px 0; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; max-width: 1100px; margin: 0 auto; }
+h1 { font-size: 20px; margin: 0; white-space: nowrap; }
+.drop { flex: 1 1 360px; display: flex; align-items: center; gap: 10px; border: 2px dashed var(--line); border-radius: 10px;
+        padding: 8px 14px; cursor: pointer; color: var(--muted); font-size: 14px; transition: .15s; }
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.drop strong { color: var(--text); }
+.drop input { display: none; }
+#status { font-size: 13px; min-height: 20px; max-width: 1100px; margin: 6px auto 0; color: var(--muted); }
+#status.ok { color: var(--ok); }
+#status.bad { color: var(--bad); }
+nav { display: flex; gap: 4px; max-width: 1100px; margin: 8px auto 0; overflow-x: auto; }
+nav button { font: inherit; border: 1px solid transparent; border-bottom: none; background: none; color: var(--muted);
+             padding: 8px 16px; border-radius: 8px 8px 0 0; cursor: pointer; white-space: nowrap; }
+nav button:hover { color: var(--text); }
+nav button.active { background: var(--bg); color: var(--text); border-color: var(--line); font-weight: 600; margin-bottom: -1px; }
+nav .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: 6px; vertical-align: middle; }
+main { flex: 1; position: relative; min-height: 0; }
+iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: var(--bg); }
+iframe[hidden] { display: none; }
+</style>
+</head>
+<body>
+<header>
+  <div class="top">
+    <h1>ПТО-пульт</h1>
+    <label class="drop" id="drop">
+      <input type="file" id="file" accept=".xlsx">
+      <span><strong>Перетащите файл объекта</strong> — реестр работ или план-факт. Пульт сам откроет нужную вкладку.</span>
+    </label>
+  </div>
+  <div id="status">Всё работает без интернета, файлы никуда не отправляются.</div>
+  <nav id="tabs"></nav>
+</header>
+<main id="frames"></main>
+<script>/*DATA*/</script>
+<script>/*APP*/</script>
+</body>
+</html>

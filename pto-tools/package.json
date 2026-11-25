@@ -1,0 +1,16 @@
+{
+  "name": "pto-tools",
+  "private": true,
+  "description": "Инструменты инженера ПТО: генератор АОСР, формы 2 и 3, М-29",
+  "scripts": {
+    "build": "python3 tools/build.py",
+    "test": "node tests/test_aosr.js && node tests/test_forms.js && node tests/test_journal.js && node tests/test_pult.js"
+  },
+  "devDependencies": {
+    "docxtemplater": "3.47.4",
+    "esbuild": "0.21.5",
+    "exceljs": "4.4.0",
+    "pizzip": "3.1.7",
+    "xlsx": "0.18.5"
+  }
+}
