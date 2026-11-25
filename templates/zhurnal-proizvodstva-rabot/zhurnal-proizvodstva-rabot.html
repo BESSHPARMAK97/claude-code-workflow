@@ -1,0 +1,587 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Журнал производства работ</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+/* Макет: спокойная рабочая панель — шапка с действиями, вкладки разделов и журналов бетона, таблицы во всю ширину */
+:root{
+  --bg:#f5f6f8; --panel:#ffffff; --fg:#2f3b4a; --muted:#6b7785; --line:#e1e6ec; --line-strong:#cfd7e0;
+  --accent:#41709f; --accent-soft:#eef2f6; --auto:#f1f6f2; --auto-fg:#3e5a48; --auto-head:#e4eee8;
+  --example:#fff8ea; --example-fg:#7a5a1e; --warn:#9a6b1f; --alert:#f6e1df; --alert-fg:#9b2c2c; --ok:#3e7a52;
+  --sans:"IBM Plex Sans","Segoe UI",Arial,sans-serif; --mono:"IBM Plex Mono",Consolas,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#171b20; --panel:#1e242b; --fg:#d3dae2; --muted:#909cab; --line:#2c343e; --line-strong:#3a4450;
+  --accent:#8fb1d6; --accent-soft:#232c36; --auto:#1d2823; --auto-fg:#a9c9b3; --auto-head:#22302a;
+  --example:#2c271d; --example-fg:#d9bf8c; --warn:#d9b26a; --alert:#3a2422; --alert-fg:#f0a8a0; --ok:#8cc7a0; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#171b20; --panel:#1e242b; --fg:#d3dae2; --muted:#909cab; --line:#2c343e; --line-strong:#3a4450;
+  --accent:#8fb1d6; --accent-soft:#232c36; --auto:#1d2823; --auto-fg:#a9c9b3; --auto-head:#22302a;
+  --example:#2c271d; --example-fg:#d9bf8c; --warn:#d9b26a; --alert:#3a2422; --alert-fg:#f0a8a0; --ok:#8cc7a0; color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.55 var(--sans)}
+header.top{background:var(--panel);border-bottom:1px solid var(--line);padding:16px max(16px,env(safe-area-inset-left)) 14px}
+.top-in{max-width:1440px;margin:0 auto;display:flex;flex-wrap:wrap;gap:12px 24px;align-items:center;justify-content:space-between}
+h1{font-size:19px;margin:0;font-weight:600;letter-spacing:-.005em}
+.sub{color:var(--muted);font-size:12.5px}
+.actions{display:flex;flex-wrap:wrap;gap:8px}
+button{font:500 13px var(--sans);border:1px solid var(--line-strong);background:var(--panel);color:var(--fg);
+  padding:7px 13px;border-radius:7px;cursor:pointer;transition:border-color .15s,background .15s}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:var(--panel)}
+button.quiet{color:var(--muted)}
+button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+nav.tabs{max-width:1440px;margin:16px auto 0;padding:0 max(16px,env(safe-area-inset-left));display:flex;gap:2px;overflow-x:auto;align-items:flex-end}
+nav.tabs button{border-radius:7px 7px 0 0;border-color:transparent;background:transparent;white-space:nowrap;color:var(--muted);padding:8px 13px}
+nav.tabs button:hover{color:var(--fg);border-color:transparent}
+nav.tabs button[aria-selected="true"]{color:var(--fg);background:var(--panel);border-color:var(--line);border-bottom-color:var(--panel);box-shadow:inset 0 2px 0 var(--accent)}
+nav.tabs .tabl{font-size:12px;color:var(--muted);padding:0 4px 9px 0;white-space:nowrap}
+nav.tabs .sep{width:1px;height:20px;background:var(--line-strong);margin:0 8px 8px}
+nav.tabs button.conc[aria-selected="true"]{box-shadow:inset 0 2px 0 var(--ok)}
+.cnt{font:11px var(--mono);color:var(--muted);margin-left:3px}
+main{max-width:1440px;margin:-1px auto 0;padding:0 max(16px,env(safe-area-inset-left)) 40px}
+section.sec{background:var(--panel);border:1px solid var(--line);border-radius:0 10px 10px 10px;padding:20px 22px}
+.sec h2{font-size:16px;margin:0 0 4px;font-weight:600}
+.sec .hint{color:var(--muted);font-size:13px;margin:0 0 16px;max-width:90ch}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px 20px}
+.field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.field label{font-size:12px;color:var(--muted)}
+input,textarea,select{font:13.5px/1.45 var(--sans);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:6px 8px;width:100%}
+textarea{resize:vertical;min-height:34px}
+.tablewrap{overflow-x:auto;border:1px solid var(--line);border-radius:8px}
+table.ed{border-collapse:collapse;width:100%;min-width:980px}
+table.ed th{background:var(--accent-soft);color:var(--fg);font-size:11.5px;font-weight:600;text-align:left;padding:8px 7px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);vertical-align:bottom;line-height:1.3}
+table.ed th.auto{background:var(--auto-head)}
+table.ed th:last-child{border-right:none}
+table.ed td{border-top:1px solid var(--line);border-right:1px solid var(--line);padding:3px;vertical-align:top}
+table.ed td:last-child{border-right:none}
+table.ed tbody tr:nth-child(even) td{background:color-mix(in srgb,var(--accent-soft) 35%,transparent)}
+table.ed td.n{font:12px var(--mono);color:var(--muted);text-align:center;padding-top:10px;width:38px}
+table.ed td.auto{background:var(--auto)!important;color:var(--auto-fg);font-size:13px;padding:8px 8px}
+table.ed td input,table.ed td textarea,table.ed td select{background:transparent;border-color:transparent}
+table.ed td select.wide{min-width:170px}
+select option{background:var(--panel);color:var(--fg)}
+tr.subrow td{background:var(--bg)!important;border-top:1px dashed var(--line)}
+tr.subrow details{padding:2px 6px 8px}
+tr.subrow summary{cursor:pointer;color:var(--accent);font-size:12.5px;font-weight:500;padding:4px 0}
+tr.subrow summary .sub{font-weight:400}
+.subj{margin-top:10px}
+.subt{font-size:12px;font-weight:600;color:var(--auto-fg);margin-bottom:6px}
+.subgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:8px 12px}
+.subgrid .field>span{font-size:11.5px;color:var(--muted);line-height:1.3}
+table.ed .subgrid input,table.ed .subgrid select,table.ed .subgrid textarea{background:var(--panel);border-color:var(--line)}
+select{background-color:var(--bg)}
+table.ed td textarea{overflow:hidden}
+table.ed td input:hover,table.ed td textarea:hover,table.ed td select:hover{border-color:var(--line-strong)}
+table.ed tr.example td{background:var(--example)!important}
+table.ed tr.example td,table.ed tr.example td input,table.ed tr.example td textarea,table.ed tr.example td select{color:var(--example-fg);font-style:italic}
+td.alert{background:var(--alert)!important;color:var(--alert-fg)!important;font-weight:600}
+td.okc{color:var(--ok)!important}
+.rowdel{border:none;background:none;color:var(--muted);padding:6px;font-size:16px;line-height:1}
+.rowdel:hover{color:var(--alert-fg)}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
+.tag{font-size:11.5px;background:var(--example);color:var(--example-fg);padding:3px 9px;border-radius:10px}
+.checks{margin-top:14px;font-size:12.5px;display:flex;flex-direction:column;gap:4px}
+.checks .w{color:var(--warn)}
+.checks .ok{color:var(--muted)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 18px;font-size:12px;color:var(--muted);margin:-6px 0 14px}
+.legend i{display:inline-block;width:14px;height:14px;border-radius:3px;border:1px solid var(--line-strong);vertical-align:-2px;margin-right:6px}
+.empty{padding:22px;color:var(--muted);text-align:center}
+.toast{position:fixed;right:max(16px,env(safe-area-inset-right));bottom:calc(16px + env(safe-area-inset-bottom));background:var(--fg);color:var(--bg);padding:9px 15px;border-radius:7px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.on{opacity:1}
+.note{max-width:1440px;margin:14px auto 0;padding:0 max(16px,env(safe-area-inset-left));color:var(--muted);font-size:12px}
+#printArea{display:none}
+@media (prefers-reduced-motion:reduce){.toast,button{transition:none}}
+
+@media print{
+  body{background:#fff;color:#000}
+  header.top,nav.tabs,main,.note,.toast{display:none!important}
+  #printArea{display:block}
+}
+@page{size:A4 landscape;margin:12mm 10mm}
+@page titul{size:A4 portrait;margin:20mm 15mm 20mm 25mm}
+.p-titul{page:titul;font-family:"Times New Roman",serif;font-size:13pt;color:#000}
+.p-sec{page-break-before:always;font-family:"Times New Roman",serif;font-size:10pt;color:#000}
+.p-titul h1{text-align:center;font-size:20pt;margin:30mm 0 4mm}
+.p-titul .no{text-align:center;font-size:14pt;margin-bottom:14mm}
+.p-titul table{width:100%;border-collapse:collapse}
+.p-titul td{padding:5px 4px;vertical-align:top;border-bottom:1px solid #000}
+.p-titul td.l{width:42%;font-size:11pt}
+.p-sec h2{font-size:12.5pt;text-align:center;margin:0 0 6px}
+.p-sec table{width:100%;border-collapse:collapse}
+.p-sec th,.p-sec td{border:1px solid #000;padding:3px 4px;vertical-align:top}
+.p-sec th{font-weight:normal;font-size:9pt;text-align:center}
+.p-sec tr.num td{text-align:center;font-size:8pt;padding:1px}
+.sign{margin-top:16px}
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="top-in">
+    <div>
+      <h1>Журнал производства работ</h1>
+      <div class="sub">Форма по Приложению В к СН РК 1.03-00-2022 · журналы бетонных, сварочных, антикоррозионных работ и ухода за бетоном</div>
+    </div>
+    <div class="actions">
+      <button id="bSave" class="primary" title="Скачать файл журнала (.json), чтобы продолжить позже или передать коллеге">Сохранить файл</button>
+      <button id="bOpen" title="Открыть ранее сохранённый файл журнала">Открыть файл</button>
+      <input id="fOpen" type="file" accept=".json,application/json" hidden>
+      <button id="bWord" title="Скачать журнал в формате Word">Экспорт в Word</button>
+      <button id="bPrint" title="Печать или сохранение в PDF через окно печати браузера">Печать / PDF</button>
+      <button id="bNew" class="quiet">Новый журнал</button>
+    </div>
+  </div>
+</header>
+
+<nav class="tabs" id="tabs" role="tablist"></nav>
+<main id="main"></main>
+<p class="note">Данные автоматически сохраняются в этом браузере. Регулярно нажимайте «Сохранить файл» — это ваша резервная копия. Строки с бежевой подсветкой — пример заполнения. Перед сдачей сверьте названия граф с официальным текстом СН РК, действующим на дату начала работ.</p>
+<div id="printArea"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+const KEY="zpr-journal-v2", OLDKEY="zpr-journal-v1";
+const CONCRETE="Бетонные работы", WELDING="Сварочные работы", AKZ="Антикоррозионные работы";
+const JR_OPTS=["",CONCRETE,WELDING,AKZ];
+const SURF_PREP=["Sa 1","Sa 2","Sa 2½","Sa 3","St 2","St 3"];
+const APPLY=["Кисть","Валик","Безвоздушное распыление","Пневматическое распыление","Окунание"];
+const WELD_METHODS=["Ручная дуговая (РД)","Механизированная в защитном газе (МП)","Механизированная самозащитной проволокой (МПС)","Автоматическая под флюсом (АФ)","Ванная (ВП)","Контактная точечная (КТ)","Газовая"];
+/* определяет спецжурнал по описанию работ */
+function guessJr(text){ const t=String(text||"").toLowerCase();
+  if(/антикорроз|огрунтов|грунтовк|грунтован|защитн\S* покрыт|окраск\S* (металл|конструкц)|лакокрас/.test(t)) return AKZ;
+  if(/свар|прихват|наплавк/.test(t)) return WELDING;
+  if(/бетонир|укладк\S* бетон|бетонн\S* смес|подлив\S* бетон/.test(t)) return CONCRETE;
+  return ""; }
+const CARE=["Укрытие плёнкой","Полив водой","Плёнкообразующий состав","Термос (утеплённая опалубка)","Электропрогрев","Греющий провод","Тепляк","Обогрев тепловыми пушками"];
+const COMPACT=["Глубинные вибраторы","Поверхностные вибраторы","Виброрейка","Самоуплотняющаяся смесь"];
+
+const TITLE_FIELDS=[
+  ["num","Журнал №"],["object","Наименование объекта строительства"],["address","Адрес (местоположение) объекта"],
+  ["customer","Заказчик (наименование, БИН, адрес)"],["contractor","Генеральный подрядчик (наименование, БИН, № и дата лицензии)"],
+  ["subcontractors","Субподрядные организации и виды работ"],["designer","Генеральный проектировщик (наименование, № лицензии)"],
+  ["project","Шифр и наименование проекта (рабочей документации)"],["expertise","Положительное заключение экспертизы проекта (№, дата, организация)"],
+  ["notice","Уведомление о начале строительно-монтажных работ (№, дата, орган ГАСК)"],["technadzor","Технический надзор (организация / эксперт, Ф.И.О., № аттестата)"],
+  ["avtornadzor","Авторский надзор (организация, Ф.И.О., № аттестата)"],["start","Начало работ (по договору / фактически)"],
+  ["finish","Окончание работ (по договору / фактически)"],["responsible","Ответственный за производство работ и ведение журнала (должность, Ф.И.О., № приказа)"],
+  ["sheets","В журнале пронумеровано, прошнуровано и скреплено печатью листов"]];
+
+/* Типы столбцов: t — текст, a — многострочный, d — дата, n — число, s — список.
+   В журналах бетона: src — значение из раздела 4, calc — расчёт. */
+const SECTIONS=[
+ {id:"s1",short:"1. ИТР",title:"Раздел 1. Список инженерно-технического персонала, занятого на строительстве объекта",
+  hint:"Все ИТР генподрядчика и субподрядчиков, допущенные к руководству работами на объекте, включая смену лиц.",
+  cols:[["fio","Фамилия, имя, отчество",22],["pos","Должность",15],["org","Организация",16],["area","Участок (вид) работ",16],
+        ["d1","Дата начала работы на объекте",11,"d"],["d2","Дата окончания работы на объекте",11,"d"],["att","Приказ о назначении, № аттестата / удостоверения",15]]},
+ {id:"s2",short:"2. Спецжурналы",title:"Раздел 2. Перечень специальных журналов работ",
+  hint:"Журналы бетонных работ и ухода за бетоном ведутся здесь же, на отдельных вкладках.",
+  cols:[["name","Наименование специального журнала",30],["who","Организация, ведущая журнал, Ф.И.О. ответственного",26],
+        ["d1","Дата начала ведения",11,"d"],["d2","Дата передачи журнала заказчику",11,"d"],["sign","Подпись принявшего",12]]},
+ {id:"s3",short:"3. Акты",title:"Раздел 3. Перечень актов освидетельствования скрытых работ и промежуточной приёмки ответственных конструкций",
+  hint:"Акты оформляются по формам приложений Д и Е СН РК 1.03-00-2022; здесь ведётся их перечень.",
+  cols:[["no","№ акта",8],["name","Наименование акта (вид работ, конструкция, место: оси, отметки)",38,"a"],["date","Дата подписания",11,"d"],
+        ["who","Кто подписал (подрядчик / технадзор / автонадзор)",22],["note","Примечание",15]]},
+ {id:"s4",short:"4. Производство работ",title:"Раздел 4. Сведения о производстве работ",
+  hint:"Заполняется ежедневно по сменам. Столбец «В спецжурнал» определяется сам по описанию работ («бетонирование», «сварка», «антикоррозионная защита», «огрунтовка» и т. п.) — запись переносится в соответствующий спецжурнал. Если определилось неверно, выберите вручную.",
+  cols:[["date","Дата",9,"d"],["shift","Смена",5,"s",["","1","2","3"]],["jr","В спецжурнал",11,"s",JR_OPTS,{noPrint:true}],
+        ["work","Наименование и описание работ, конструкция, методы производства",24,"a"],["place","Место (оси, отметки, этаж)",12],
+        ["unit","Ед. изм.",6,"s",["","м³","м²","м","т","шт","компл"]],["vol","Объём",6,"n"],["temp","t воздуха, °C",6,"n"],
+        ["weather","Погодные условия",9],["exec","Исполнитель (организация, бригада)",12],["resp","Ответственный: Ф.И.О., подпись",11]]},
+ {id:"s5",short:"5. Замечания",title:"Раздел 5. Замечания технического и авторского надзора, контролирующих органов",
+  hint:"Записи делают лица, осуществляющие надзор. Подрядчик отмечает устранение. Статус считается автоматически.",
+  cols:[["date","Дата",9,"d"],["text","Замечания и указания",30,"a"],["who","Кто выдал (должность, Ф.И.О., подпись)",17],
+        ["term","Срок устранения",10,"d"],["done","Отметка об устранении (дата, Ф.И.О., подпись)",17],["ack","Ознакомлен (подпись)",9],
+        ["status","Статус",9,"calc",r=>!r.text?"":r.done?"Устранено":(r.term&&r.term<today()?"Просрочено":"В работе")]]}
+];
+const JOURNALS=[
+ {id:"bj",kind:CONCRETE,short:"Бетонные работы",title:"Журнал бетонных работ",
+  hint:"Зелёные столбцы берутся из записей раздела 4 с отметкой «Бетонные работы». Заполните белые столбцы по каждой захватке.",
+  cols:[["date","Дата бетонирования",8,"src"],["work","Бетонируемая конструкция",17,"src"],["place","Место (оси, отметки)",11,"src"],
+        ["vol","Объём смеси, м³",6,"src"],["temp","t воздуха, °C",5,"src"],
+        ["cls","Класс бетона, марки W и F",9],["slump","Подвижность (осадка конуса, см / П)",8],["supplier","Поставщик, № документа о качестве / накладной",13,"a"],
+        ["tmix","t смеси при укладке, °C",6,"n"],["compact","Способ уплотнения",10,"s",["",...COMPACT]],["samples","Образцы: серий, маркировка",9],
+        ["rproj","Проектная прочность, МПа",6,"n"],["r7","Прочность 7 сут, МПа",6,"n"],["r28","Прочность 28 сут, МПа",6,"n"],
+        ["pct","% от проектной",6,"calc",r=>pct(r)],["strip","Дата распалубки",9,"d"],["resp","Ответственный",9,"src"]]},
+ {id:"uh",kind:CONCRETE,short:"Уход за бетоном",title:"Журнал ухода за бетоном",
+  hint:"Зелёные столбцы берутся из раздела 4. Продолжительность ухода считается по датам начала и окончания.",
+  cols:[["date","Дата бетонирования",8,"src"],["work","Конструкция",17,"src"],["place","Место (оси, отметки)",11,"src"],
+        ["vol","Объём, м³",6,"src"],["temp","t воздуха при бетонировании, °C",7,"src"],
+        ["care","Способ ухода / прогрева",13,"s",["",...CARE]],["c1","Начало ухода",9,"d"],["c2","Окончание ухода",9,"d"],
+        ["days","Продолжи­тельность, сут",7,"calc",r=>days(r)],["tconc","t бетона при выдерживании: мин / макс, °C",9],
+        ["rend","Прочность к окончанию ухода, МПа (%)",9],["remarks","Замечания (трещины, пересушивание и т. п.)",14,"a"],["resp","Ответственный (Ф.И.О., подпись)",10]]},
+ {id:"sv",kind:WELDING,short:"Сварочные работы",title:"Журнал сварочных работ",
+  hint:"Зелёные столбцы берутся из записей раздела 4 с отметкой «Сварочные работы». Заполните сведения о материалах, сварщике и контроле.",
+  cols:[["date","Дата сварки",8,"src"],["work","Конструкция, узел, соединение",17,"src"],["place","Место (оси, отметки)",10,"src"],
+        ["vol","Объём",6,"src"],["temp","t воздуха, °C",5,"src"],
+        ["steel","Марка стали (арматуры) свариваемых элементов",9],["method","Способ сварки",12,"s",["",...WELD_METHODS]],
+        ["cons","Марка электродов / проволоки, № сертификата",12,"a"],["heat","Подогрев, защита от ветра и осадков",9],
+        ["welder","Ф.И.О. сварщика",10],["cert","№ удостоверения, клеймо",8],
+        ["visual","Визуальный и измерительный контроль: результат",10,"s",["","Годно","Не годно — исправить"]],
+        ["ndt","Неразрушающий контроль: метод, № заключения, результат",11,"a"],["resp","Ответственный",8,"src"]]},
+ {id:"ak",kind:AKZ,short:"Антикоррозионная защита",title:"Журнал антикоррозионной защиты",
+  hint:"Зелёные столбцы берутся из записей раздела 4 с отметкой «Антикоррозионные работы». Заполните сведения о подготовке поверхности, материалах и контроле покрытия.",
+  cols:[["date","Дата",8,"src"],["work","Конструкция, элемент, вид покрытия",15,"src"],["place","Место (оси, отметки)",9,"src"],
+        ["vol","Площадь / объём",6,"src"],["temp","t воздуха, °C",5,"src"],["hum","Отн. влажность воздуха, %",6,"n"],["tsurf","t поверхности, °C",6,"n"],
+        ["prep","Подготовка поверхности: способ, степень очистки",10,"s",["",...SURF_PREP]],["degr","Обезжиривание, обеспыливание",8],
+        ["mat","Материал: марка, № партии, сертификат",13,"a"],["layers","Слой № / всего слоёв",6],["apply","Способ нанесения",9,"s",["",...APPLY]],
+        ["thick","Толщина: слоя / общая, мкм",7],["adh","Адгезия, сплошность: метод и результат",10,"a"],["resp","Ответственный",8,"src"]]}
+];
+const ALL=[...SECTIONS,...JOURNALS];
+
+/* ---------- утилиты ---------- */
+const esc=v=>String(v??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtDate=v=>/^\d{4}-\d{2}-\d{2}$/.test(v||"")?v.split("-").reverse().join("."):(v||"");
+const num=v=>{const x=parseFloat(String(v??"").replace(",","."));return isFinite(x)?x:null};
+const fmtNum=v=>{const x=num(v);return x===null?(v||""):String(x).replace(".",",")};
+function today(){const d=new Date();return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0")}
+function pct(r){const a=num(r.r28),b=num(r.rproj);return a!==null&&b?Math.round(a/b*100)+"%":""}
+function days(r){if(!r.c1||!r.c2)return"";return String(Math.round((new Date(r.c2)-new Date(r.c1))/864e5))}
+const uid=()=>Math.random().toString(36).slice(2,10);
+function toast(t){const el=document.getElementById("toast");el.textContent=t;el.classList.add("on");clearTimeout(el._t);el._t=setTimeout(()=>el.classList.remove("on"),2200)}
+
+/* ---------- состояние ---------- */
+function blank(){
+  const s={title:{},meta:{created:new Date().toISOString(),v:4},bj:{},uh:{},sv:{},ak:{}};
+  TITLE_FIELDS.forEach(([k])=>s.title[k]="");
+  SECTIONS.forEach(sec=>s[sec.id]=[]);
+  return s;
+}
+function sample(){
+  const s=blank();
+  Object.assign(s.title,{num:"1",object:"Пример: Жилой дом с паркингом, пятно 2",address:"г. Астана, район Есиль, ул. Примерная, 10",
+    customer:"ТОО «Заказчик-Пример»",contractor:"ТОО «СтройМонтаж»",designer:"ТОО «ПроектПример»",start:"02.03.2026 / 02.03.2026",
+    responsible:"Прораб Иванов С.П., приказ №12-П от 27.02.2026"});
+  s.s1=[{fio:"Иванов Сергей Петрович",pos:"Прораб",org:"ТОО «СтройМонтаж»",area:"Общестроительные работы",d1:"2026-03-02",d2:"",att:"Приказ №12-П от 27.02.2026"}];
+  s.s2=[{name:"Журнал бетонных работ",who:"ТОО «СтройМонтаж», Иванов С.П.",d1:"2026-03-12"},{name:"Журнал ухода за бетоном",who:"ТОО «СтройМонтаж», Иванов С.П.",d1:"2026-03-12"},{name:"Журнал сварочных работ",who:"ТОО «СтройМонтаж», Иванов С.П.",d1:"2026-03-16"},{name:"Журнал антикоррозионной защиты",who:"ТОО «СтройМонтаж», Иванов С.П.",d1:"2026-03-17"}];
+  s.s3=[{no:"АСР-1",name:"Устройство песчано-гравийного основания под фундаментную плиту в осях 1–6 / А–Г, отм. −3,450",date:"2026-03-09",who:"Иванов С.П., Ахметов Е.К., Ли В.А."}];
+  const c={_id:uid(),date:"2026-03-12",shift:"1",jr:CONCRETE,work:"Бетонирование фундаментной плиты Фп-1",place:"оси 1–6 / А–Г, отм. −3,250",
+    unit:"м³",vol:"86,4",temp:"6",weather:"Без осадков",exec:"ТОО «СтройМонтаж», бригада Сейткалиева",resp:"Иванов С.П."};
+  const w={_id:uid(),date:"2026-03-16",shift:"1",jr:WELDING,work:"Сварка закладных деталей МН-1 колонн каркаса, тавровые соединения",place:"оси 2–5 / Б, отм. +0,000",
+    unit:"шт",vol:"24",temp:"3",weather:"Ветер 6 м/с, без осадков",exec:"ТОО «СтройМонтаж», звено сварщиков",resp:"Иванов С.П."};
+  const a={_id:uid(),date:"2026-03-17",shift:"1",jr:AKZ,work:"Антикоррозионная защита закладных деталей МН-1 и сварных швов: грунтовка ГФ-021 в 2 слоя",place:"оси 2–5 / Б, отм. +0,000",
+    unit:"м²",vol:"6,5",temp:"8",weather:"Без осадков",exec:"ТОО «СтройМонтаж», звено маляров",resp:"Иванов С.П."};
+  s.s4=[{_id:uid(),date:"2026-03-11",shift:"1",jr:"",work:"Армирование фундаментной плиты Фп-1: нижняя и верхняя сетки А500С Ø16 шаг 200",
+    place:"оси 1–6 / А–Г, отм. −3,250",unit:"т",vol:"7,8",temp:"5",weather:"Ясно",exec:"ТОО «СтройМонтаж», бригада Нурланова",resp:"Иванов С.П."},c,w,a];
+  s.s5=[{date:"2026-03-11",text:"Не представлены документы о качестве на арматурную сталь А500С Ø16. Приостановить армирование до представления сертификатов.",
+    who:"Технадзор Ахметов Е.К.",term:"2026-03-12",done:"12.03.2026 представлены, Иванов С.П."}];
+  s.bj[c._id]={cls:"С25/30, W6, F150",slump:"ОК 14 см / П3",supplier:"ТОО «БетонСервис», паспорт №418 от 12.03.2026",tmix:"14",
+    compact:"Глубинные вибраторы",samples:"3 серии: Фп1-1…Фп1-3",rproj:"30",r7:"21,4",r28:"32,8",strip:"2026-03-19"};
+  s.sv[w._id]={steel:"С255; А500С",method:"Ручная дуговая (РД)",cons:"Э50А, УОНИ-13/55 Ø4, сертификат №1123",heat:"Ветрозащитный экран",
+    welder:"Касымов Б.Т.",cert:"Удостоверение №0457, клеймо К12",visual:"Годно",ndt:"УЗК 10% соединений, заключение №7 — годно"};
+  s.ak[a._id]={hum:"65",tsurf:"9",prep:"St 3",degr:"Уайт-спирит, обеспылено",mat:"ГФ-021, партия 2211, сертификат №5520",layers:"2 / 2",
+    apply:"Кисть",thick:"25 / 50",adh:"Решётчатый надрез — балл 1; сплошность без пропусков"};
+  s.uh[c._id]={care:"Укрытие плёнкой",c1:"2026-03-12",c2:"2026-03-19",tconc:"+8 / +17",rend:"21,4 МПа (71%)",remarks:"Нет",resp:"Иванов С.П."};
+  SECTIONS.forEach(sec=>s[sec.id].forEach(r=>r._ex=true));
+  return s;
+}
+function normalize(s){
+  if(!s||!s.title) return null;
+  SECTIONS.forEach(sec=>{ if(!Array.isArray(s[sec.id])) s[sec.id]=[] });
+  s.bj=s.bj||{}; s.uh=s.uh||{}; s.sv=s.sv||{}; s.ak=s.ak||{}; s.meta=s.meta||{};
+  s.s4.forEach(r=>{ if(r.type!==undefined&&r.jr===undefined){ r.jr=[CONCRETE,WELDING,AKZ].includes(r.type)?r.type:guessJr(r.work); r._jrManual=!!r.jr; delete r.type } });
+  // перенос из первой версии: объём текстом и «условия» одной строкой
+  s.s4.forEach(r=>{
+    if(!r._id) r._id=uid();
+    if(r.cond!==undefined&&r.weather===undefined){ const m=String(r.cond).match(/([+\-−]?\d+[.,]?\d*)\s*°?/); r.temp=m?m[1].replace("−","-"):""; r.weather=r.cond; delete r.cond }
+    if(r.vol&&r.unit===undefined){ const m=String(r.vol).match(/([\d.,]+)\s*(.*)/); if(m){r.vol=m[1];r.unit=m[2]||""} }
+  });
+  return s;
+}
+let state=null;
+try{ state=normalize(JSON.parse(localStorage.getItem(KEY))) }catch(e){}
+if(!state){ try{ state=normalize(JSON.parse(localStorage.getItem(OLDKEY))) }catch(e){} }
+if(!state) state=sample();
+
+let saveT;
+function persist(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){} },300) }
+
+/* строки журналов бетона = записи раздела 4 с видом «Бетонные работы» */
+function kindRows(kind){ return state.s4.filter(r=>r.jr===kind&&r.date) }
+function jrows(j){ return kindRows(j.kind).map(src=>({src,own:(state[j.id][src._id] ||= {}),_ex:src._ex})) }
+function cellValue(col,row){ // row: {src,own}
+  const [k,,,t,fn]=col;
+  if(t==="src") return row.src[k]??"";
+  if(t==="calc") return fn(row.own);
+  return row.own[k]??"";
+}
+
+/* ---------- отрисовка ---------- */
+let current="t";
+try{ current=localStorage.getItem(KEY+"-tab")||"t" }catch(e){}
+if(current!=="t"&&!ALL.some(x=>x.id===current)) current="t";
+
+function renderTabs(){
+  const cnt=id=>SECTIONS.some(s=>s.id===id)?state[id].length:kindRows(JOURNALS.find(j=>j.id===id).kind).length;
+  document.getElementById("tabs").innerHTML=
+    `<button role="tab" data-tab="t" aria-selected="${current==="t"}">Титульный лист</button>`+
+    SECTIONS.map(t=>`<button role="tab" data-tab="${t.id}" aria-selected="${t.id===current}">${esc(t.short)}<span class="cnt">${cnt(t.id)}</span></button>`).join("")+
+    `<span class="sep" aria-hidden="true"></span><span class="tabl">Спецжурналы:</span>`+
+    JOURNALS.map(t=>`<button role="tab" class="conc" data-tab="${t.id}" aria-selected="${t.id===current}">${esc(t.short)}<span class="cnt">${cnt(t.id)}</span></button>`).join("");
+}
+document.getElementById("tabs").addEventListener("click",e=>{
+  const b=e.target.closest("[data-tab]"); if(!b) return;
+  current=b.dataset.tab; try{localStorage.setItem(KEY+"-tab",current)}catch(_){}
+  renderTabs(); renderMain();
+});
+
+function control(col,val,id,attrs){
+  const [k,label,,t,opts]=col;
+  const a=`id="${id}" ${attrs} data-k="${k}" aria-label="${esc(label)}"`;
+  if(t==="d") return `<input type="date" ${a} value="${esc(val)}">`;
+  if(t==="n") return `<input type="text" inputmode="decimal" ${a} value="${esc(val)}">`;
+  if(t==="s"){ const o=opts.includes(val)?opts:[...opts,val];
+    return `<select ${opts.length>8||k==="compact"||k==="jr"?'class="wide" ':""}${a}>${o.map(x=>`<option${x===val?" selected":""}>${esc(x)}</option>`).join("")}</select>` }
+  return `<textarea rows="${t==="a"?3:2}" ${a}>${esc(val)}</textarea>`;
+}
+function alertClass(sec,k,v,row){
+  if(k==="status"&&v==="Просрочено") return "alert";
+  if(k==="status"&&v==="Устранено") return "okc";
+  if(k==="pct"&&v&&parseInt(v)<100) return "alert";
+  if(k==="days"&&v!==""&&+v<0) return "alert";
+  return "";
+}
+
+function renderMain(){
+  const m=document.getElementById("main");
+  if(current==="t"){
+    m.innerHTML=`<section class="sec"><h2>Титульный лист</h2>
+      <p class="hint">Журнал ведётся с первого дня работ на объекте лицом, ответственным за производство работ. После распечатки журнал нумеруется, прошнуровывается, скрепляется печатью и подписью руководителя подрядной организации.</p>
+      <div class="grid">${TITLE_FIELDS.map(([k,l])=>`<div class="field"><label for="ti-${k}">${esc(l)}</label>
+        <textarea id="ti-${k}" data-t="${k}" rows="${k==="num"||k==="sheets"?1:2}">${esc(state.title[k])}</textarea></div>`).join("")}</div></section>`;
+    return;
+  }
+  const sec=SECTIONS.find(s=>s.id===current), jr=JOURNALS.find(s=>s.id===current), def=sec||jr;
+  const rows=sec?state[sec.id]:jrows(jr);
+  const head=`<tr><th style="text-align:center">№</th>${def.cols.map(c=>`<th class="${c[3]==="src"||c[3]==="calc"?"auto":""}" style="width:${c[2]}%">${esc(c[1])}</th>`).join("")}${sec?"<th></th>":""}</tr>`;
+  const body=rows.map((r,i)=>{
+    const data=sec?r:r;
+    return `<tr class="${r._ex?"example":""}"><td class="n">${i+1}</td>${def.cols.map(c=>{
+      const t=c[3];
+      if(t==="src"||t==="calc"){
+        const v=sec?(t==="calc"?c[4](r):""):cellValue(c,r);
+        const shown=c[3]==="src"&&c[0]==="date"?fmtDate(v):(c[0]==="vol"||c[0]==="temp")?fmtNum(v):v;
+        return `<td class="auto ${alertClass(def,c[0],v,r)}">${esc(shown)}</td>`;
+      }
+      const val=sec?(r[c[0]]??""):(r.own[c[0]]??"");
+      return `<td>${control(c,val,`${def.id}-${i}-${c[0]}`,`data-r="${i}"`)}</td>`;
+    }).join("")}${sec?`<td><button class="rowdel" data-del="${i}" title="Удалить строку" aria-label="Удалить строку ${i+1}">×</button></td>`:""}</tr>`+(sec&&sec.id==="s4"?subRow(r,def.cols.length+2):"");
+  }).join("");
+  const emptyMsg=sec?"Записей пока нет. Нажмите «Добавить запись».":`Здесь появятся записи раздела 4 с отметкой «${jr.kind}» в столбце «В спецжурнал».`;
+  m.innerHTML=`<section class="sec"><h2>${esc(def.title)}</h2><p class="hint">${esc(def.hint)}</p>
+    ${jr||sec.id==="s5"?`<div class="legend"><span><i style="background:var(--auto)"></i>заполняется автоматически</span><span><i style="background:var(--panel)"></i>заполняется вручную</span></div>`:""}
+    <div class="tablewrap"><table class="ed" style="min-width:${Math.max(980,(def.cols.length+1)*92)}px"><thead>${head}</thead><tbody>${body||`<tr><td colspan="${def.cols.length+2}" class="empty">${emptyMsg}</td></tr>`}</tbody></table></div>
+    <div class="bar">
+      ${sec?`<button class="primary" id="bAdd">Добавить запись</button>`:`<button id="bGo4">Перейти к разделу 4</button>`}
+      ${sec&&sec.id==="s4"?`<button id="bCopy">Повторить последнюю запись на сегодня</button><button id="bSort">Упорядочить по дате</button>`:""}
+      ${rows.some(r=>r._ex)?`<span class="tag">есть строка-пример</span>`:""}
+    </div><div class="checks" id="checks"></div></section>`;
+  renderChecks();
+  mainEl.querySelectorAll("td textarea").forEach(autosize);
+}
+const openSubs=new Set();
+function subRow(r,span){
+  if(!r.jr||!r._id) return "";
+  const js=JOURNALS.filter(j=>j.kind===r.jr); if(!js.length) return "";
+  let filled=0,total=0;
+  const html=js.map(j=>{ const own=(state[j.id][r._id] ||= {});
+    const cols=j.cols.filter(c=>c[3]!=="src"&&c[3]!=="calc");
+    return `<div class="subj"><div class="subt">${esc(j.title)}</div><div class="subgrid">${cols.map(c=>{ total++; if(own[c[0]]) filled++;
+      return `<label class="field"><span>${esc(c[1])}</span>${control(c,own[c[0]]??"",`x-${j.id}-${r._id}-${c[0]}`,`data-j="${j.id}" data-id="${r._id}"`)}</label>`}).join("")}</div></div>`;
+  }).join("");
+  const what=js.length>1?"журналов: "+js.map(j=>j.title.replace(/^Журнал /,"").toLowerCase()).join(", "):"журнала: "+js[0].title.replace(/^Журнал /,"").toLowerCase();
+  return `<tr class="subrow" data-sub="${r._id}"><td></td><td colspan="${span-1}"><details data-sid="${r._id}"${openSubs.has(r._id)?" open":""}>
+    <summary>Данные для ${what} <span class="sub">· заполнено ${filled} из ${total} · в печать раздела 4 не попадают</span></summary>${html}</details></td></tr>`;
+}
+function updateSub(tr,r){
+  const nx=tr.nextElementSibling; if(nx&&nx.classList.contains("subrow")) nx.remove();
+  const span=tr.children.length; const h=subRow(r,span); if(h) tr.insertAdjacentHTML("afterend",h);
+  const n=tr.nextElementSibling; if(n&&n.classList.contains("subrow")) n.querySelectorAll("textarea").forEach(autosize);
+}
+function autosize(t){ t.style.height="auto"; t.style.height=Math.max(t.scrollHeight+2,34)+"px" }
+
+function renderChecks(){
+  const el=document.getElementById("checks"); if(!el) return;
+  const out=[]; const t=today();
+  if(current==="s4"){ const rows=state.s4;
+    rows.forEach((r,i)=>{
+      if(!r.date) out.push(`Строка ${i+1}: не указана дата.`);
+      if(!r.resp) out.push(`Строка ${i+1}: не указан ответственный.`);
+      if(!r.place) out.push(`Строка ${i+1}: не указано место работ (оси, отметки).`);
+      if(r.jr===CONCRETE&&r.unit&&r.unit!=="м³") out.push(`Строка ${i+1}: для бетонных работ объём указывается в м³.`);
+      if(i>0&&r.date&&rows[i-1].date&&r.date<rows[i-1].date) out.push(`Строка ${i+1}: дата раньше предыдущей записи — нарушена хронология.`);
+    });}
+  if(current==="s5") state.s5.forEach((r,i)=>{ if(r.term&&r.term<t&&!r.done&&r.text) out.push(`Строка ${i+1}: срок устранения истёк (${fmtDate(r.term)}), отметки об устранении нет.`) });
+  if(current==="s3") state.s3.forEach((r,i)=>{ if(!r.date) out.push(`Строка ${i+1}: не указана дата подписания акта.`) });
+  if(current==="s1") state.s1.forEach((r,i)=>{ if(!r.att) out.push(`Строка ${i+1}: нет приказа о назначении / аттестата.`) });
+  if(current==="bj") jrows(JOURNALS.find(j=>j.id==="bj")).forEach((r,i)=>{
+    if(!r.own.cls) out.push(`Строка ${i+1}: не указан класс бетона.`);
+    if(!r.own.samples) out.push(`Строка ${i+1}: не указаны отобранные образцы.`);
+    const p=pct(r.own); if(p&&parseInt(p)<100) out.push(`Строка ${i+1}: прочность в 28 сут ниже проектной (${p}).`);
+  });
+  if(current==="uh") jrows(JOURNALS.find(j=>j.id==="uh")).forEach((r,i)=>{
+    if(!r.own.care) out.push(`Строка ${i+1}: не указан способ ухода.`);
+    if(r.own.c1&&r.own.c2&&r.own.c2<r.own.c1) out.push(`Строка ${i+1}: окончание ухода раньше начала.`);
+    if(r.own.c1&&r.src.date&&r.own.c1<r.src.date) out.push(`Строка ${i+1}: уход начат раньше бетонирования.`);
+  });
+  if(current==="sv") jrows(JOURNALS.find(j=>j.id==="sv")).forEach((r,i)=>{
+    if(!r.own.welder||!r.own.cert) out.push(`Строка ${i+1}: не указан сварщик или № его удостоверения.`);
+    if(!r.own.cons) out.push(`Строка ${i+1}: не указаны сварочные материалы и сертификат.`);
+    if(r.own.visual&&r.own.visual!=="Годно") out.push(`Строка ${i+1}: соединения не приняты по визуальному контролю.`);
+    const tt=num(r.src.temp); if(tt!==null&&tt<0&&!r.own.heat) out.push(`Строка ${i+1}: сварка при отрицательной температуре — укажите подогрев и защиту.`);
+  });
+  if(current==="ak") jrows(JOURNALS.find(j=>j.id==="ak")).forEach((r,i)=>{
+    if(!r.own.mat) out.push(`Строка ${i+1}: не указан материал покрытия и сертификат.`);
+    if(!r.own.prep) out.push(`Строка ${i+1}: не указана степень очистки поверхности.`);
+    const h=num(r.own.hum); if(h!==null&&h>80) out.push(`Строка ${i+1}: влажность ${h}% — проверьте допустимость по паспорту материала (обычно не более 80%).`);
+    const tt=num(r.src.temp); if(tt!==null&&tt<5) out.push(`Строка ${i+1}: t воздуха ${tt} °C — проверьте допустимую температуру нанесения по паспорту материала.`);
+    const ts=num(r.own.tsurf); if(ts!==null&&tt!==null&&ts<tt) out.push(`Строка ${i+1}: поверхность холоднее воздуха — проверьте точку росы (поверхность должна быть теплее на 3 °C и более).`);
+  });
+  el.innerHTML=out.length?out.slice(0,12).map(x=>`<div class="w">⚠ ${esc(x)}</div>`).join("")+(out.length>12?`<div class="w">…и ещё ${out.length-12}</div>`:"")
+    :`<div class="ok">Проверка заполнения: замечаний нет.</div>`;
+}
+
+const mainEl=document.getElementById("main");
+function onEdit(e){
+  const t=e.target;
+  if(t.dataset.t){ state.title[t.dataset.t]=t.value; persist(); return; }
+  if(!t.dataset.k) return;
+  if(t.tagName==="TEXTAREA") autosize(t);
+  if(t.dataset.j){ const o=(state[t.dataset.j][t.dataset.id] ||= {}); o[t.dataset.k]=t.value; persist(); return; }
+  const sec=SECTIONS.find(s=>s.id===current), jr=JOURNALS.find(s=>s.id===current);
+  const i=+t.dataset.r; let tr=t.closest("tr");
+  if(sec){ const r=state[sec.id][i]; r[t.dataset.k]=t.value; if(r._ex){delete r._ex; tr.classList.remove("example")}
+    if(sec.id==="s4"&&!r._id) r._id=uid();
+    if(sec.id==="s4"&&t.dataset.k==="jr"&&e.type==="change"){ r._jrManual=true; updateSub(tr,r); }
+    if(sec.id==="s4"&&t.dataset.k==="work"&&!r._jrManual){
+      const g=guessJr(r.work);
+      if(g!==(r.jr||"")){ r.jr=g; const sel=tr.querySelector('[data-k="jr"]'); if(sel) sel.value=g; renderTabs(); updateSub(tr,r); }
+    }
+    if(sec.id==="s5"||(sec.id==="s4"&&e.type==="change"&&(t.dataset.k==="jr"||t.dataset.k==="date"))){ persist(); if(sec.id==="s5") refreshCalc(); renderTabs(); renderChecks(); return }
+  } else {
+    const row=jrows(jr)[i]; row.own[t.dataset.k]=t.value; refreshCalc();
+  }
+  persist(); renderChecks();
+}
+function refreshCalc(){ // обновляет расчётные ячейки без полной перерисовки (чтобы не терять фокус)
+  const sec=SECTIONS.find(s=>s.id===current), jr=JOURNALS.find(s=>s.id===current), def=sec||jr;
+  const rows=sec?state[sec.id]:jrows(jr);
+  const trs=mainEl.querySelectorAll("tbody tr");
+  rows.forEach((r,i)=>{ def.cols.forEach((c,j)=>{ if(c[3]!=="calc") return;
+    const v=sec?c[4](r):cellValue(c,r); const td=trs[i]&&trs[i].children[j+1]; if(!td) return;
+    td.textContent=v; td.className="auto "+alertClass(def,c[0],v,r); }) });
+}
+mainEl.addEventListener("input",onEdit);
+mainEl.addEventListener("toggle",e=>{ const d=e.target; if(!d.dataset||!d.dataset.sid) return;
+  d.open?openSubs.add(d.dataset.sid):openSubs.delete(d.dataset.sid);
+  if(d.open) d.querySelectorAll("textarea").forEach(autosize); },true);
+mainEl.addEventListener("change",onEdit);
+mainEl.addEventListener("click",e=>{
+  if(e.target.closest("#bGo4")){ current="s4"; renderTabs(); renderMain(); return }
+  const sec=SECTIONS.find(s=>s.id===current); if(!sec) return;
+  const rows=state[sec.id];
+  if(e.target.closest("#bAdd")){
+    const r={}; if(sec.id==="s4") r._id=uid();
+    if(sec.cols.some(c=>c[0]==="date")) r.date=today();
+    rows.push(r); persist(); renderTabs(); renderMain();
+    const f=mainEl.querySelector("tbody tr:last-child textarea, tbody tr:last-child select"); f&&f.focus();
+  }
+  if(e.target.closest("#bCopy")&&rows.length){
+    const r={...rows[rows.length-1],_id:uid(),date:today(),vol:""}; delete r._ex;
+    rows.push(r); persist(); renderTabs(); renderMain();
+  }
+  if(e.target.closest("#bSort")){ rows.sort((a,b)=>(a.date||"").localeCompare(b.date||"")||(a.shift||"").localeCompare(b.shift||"")); persist(); renderMain(); toast("Записи упорядочены по дате") }
+  const d=e.target.closest("[data-del]");
+  if(d){
+    const i=+d.dataset.del;
+    if(d.dataset.armed){
+      const [gone]=rows.splice(i,1);
+      if(gone&&gone._id){ delete state.bj[gone._id]; delete state.uh[gone._id]; delete state.sv[gone._id]; delete state.ak[gone._id] }
+      persist(); renderTabs(); renderMain(); toast("Строка удалена");
+    } else { d.dataset.armed="1"; d.textContent="Удалить?"; d.style.color="var(--alert-fg)"; d.style.fontSize="12px";
+      setTimeout(()=>{ if(d.isConnected){delete d.dataset.armed; d.textContent="×"; d.style.cssText=""} },3000) }
+  }
+});
+
+/* ---------- документ для печати и Word ---------- */
+function printTable(def0,rows,getter,minRows){
+  const def={...def0,cols:def0.cols.filter(c=>!(c[5]&&c[5].noPrint))};
+  const pad=Math.max(0,minRows-rows.length);
+  return `<div class="p-sec"><h2>${esc(def.title)}</h2><table><thead><tr><th style="width:3%">№ п/п</th>${def.cols.map(c=>`<th style="width:${c[2]}%">${esc(c[1])}</th>`).join("")}</tr>
+    <tr class="num">${[1,...def.cols.map((_,i)=>i+2)].map(n=>`<td>${n}</td>`).join("")}</tr></thead><tbody>`+
+    rows.map((r,i)=>`<tr><td style="text-align:center">${i+1}</td>${def.cols.map(c=>{
+      let v=getter(c,r); if(c[3]==="d"||c[0]==="date"||c[0]==="c1"||c[0]==="c2"||c[0]==="strip") v=fmtDate(v);
+      return `<td>${esc(v).replace(/\n/g,"<br>")}</td>`}).join("")}</tr>`).join("")+
+    Array.from({length:pad},()=>`<tr><td style="height:22px"></td>${def.cols.map(()=>"<td></td>").join("")}</tr>`).join("")+
+    `</tbody></table></div>`;
+}
+function buildDoc(){
+  const T=state.title;
+  let h=`<div class="p-titul"><h1>ЖУРНАЛ<br>ПРОИЗВОДСТВА РАБОТ</h1><div class="no">№ ${esc(T.num)||"____"}</div><table>`+
+    TITLE_FIELDS.filter(([k])=>k!=="num").map(([k,l])=>`<tr><td class="l">${esc(l)}</td><td>${esc(T[k]).replace(/\n/g,"<br>")||"&nbsp;"}</td></tr>`).join("")+
+    `</table><p class="sign">Руководитель подрядной организации ____________________ / ____________________ /<br><br>М.П.</p></div>`;
+  SECTIONS.forEach(sec=>{
+    const rows=state[sec.id].filter(r=>!r._ex);
+    h+=printTable(sec,rows,(c,r)=>{ const v=c[3]==="calc"?c[4](r):(r[c[0]]??""); return c[0]==="vol"||c[0]==="temp"?fmtNum(v):v },sec.id==="s4"?15:8);
+  });
+  JOURNALS.forEach(j=>{
+    const rows=jrows(j).filter(r=>!r._ex);
+    h+=printTable(j,rows,(c,r)=>{ const v=cellValue(c,r); return c[0]==="vol"||c[0]==="temp"?fmtNum(v):v },12);
+  });
+  return h;
+}
+function download(name,blob){
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download=name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),2000);
+}
+const fileBase=()=>"Журнал_производства_работ"+(state.title.num?"_№"+state.title.num:"")+"_"+today();
+
+document.getElementById("bPrint").onclick=()=>{
+  document.getElementById("printArea").innerHTML=buildDoc();
+  try{ window.print() }catch(e){ toast("Печать недоступна в этом окне — откройте файл в браузере") }
+};
+window.addEventListener("beforeprint",()=>{ document.getElementById("printArea").innerHTML=buildDoc() });
+
+document.getElementById("bWord").onclick=()=>{
+  const css=`body{font-family:"Times New Roman";font-size:11pt}
+    @page Section1{size:841.9pt 595.3pt;mso-page-orientation:landscape;margin:36pt 30pt}
+    @page Titul{size:595.3pt 841.9pt;margin:56pt 42pt 56pt 70pt}
+    div.Titul{page:Titul} div.Section1{page:Section1}
+    table{border-collapse:collapse;width:100%} .p-sec th,.p-sec td{border:1px solid #000;padding:3pt;vertical-align:top;font-size:9.5pt}
+    .p-sec{page-break-before:always}
+    .p-titul td{border-bottom:1px solid #000;padding:4pt;vertical-align:top} .p-titul h1{text-align:center;font-size:20pt} .no{text-align:center;font-size:14pt}
+    h2{font-size:12pt;text-align:center}`;
+  const doc=buildDoc().replace('<div class="p-titul">','<div class="Titul p-titul">')
+    .replace('<div class="p-sec">','<br clear="all" style="page-break-before:always;mso-break-type:section-break"><div class="Section1"><div class="p-sec" style="page-break-before:auto">')+"</div>";
+  const html=`<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>Журнал производства работ</title><style>${css}</style></head><body>${doc}</body></html>`;
+  download(fileBase()+".doc",new Blob(["﻿",html],{type:"application/msword"}));
+  toast("Файл Word сформирован");
+};
+document.getElementById("bSave").onclick=()=>{
+  state.meta.saved=new Date().toISOString();
+  download(fileBase()+".json",new Blob([JSON.stringify(state,null,1)],{type:"application/json"}));
+  toast("Файл журнала сохранён");
+};
+document.getElementById("bOpen").onclick=()=>document.getElementById("fOpen").click();
+document.getElementById("fOpen").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{ try{ const s=normalize(JSON.parse(rd.result)); if(!s) throw 0;
+      state=s; persist(); renderTabs(); renderMain(); toast("Журнал загружен: "+f.name);
+    }catch(_){ toast("Это не файл журнала. Выберите .json, сохранённый этой программой") } };
+  rd.readAsText(f); e.target.value="";
+};
+const bNew=document.getElementById("bNew");
+bNew.onclick=()=>{
+  if(!bNew.dataset.armed){ bNew.dataset.armed="1"; bNew.textContent="Очистить всё? Нажмите ещё раз";
+    setTimeout(()=>{delete bNew.dataset.armed; bNew.textContent="Новый журнал"},4000); return; }
+  delete bNew.dataset.armed; bNew.textContent="Новый журнал";
+  state=blank(); persist(); current="t"; renderTabs(); renderMain(); toast("Создан пустой журнал");
+};
+
+renderTabs(); renderMain();
+</script>
+</body>
+</html>

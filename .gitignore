@@ -1,0 +1,9 @@
+# Локальные настройки Claude Code
+.claude/settings.local.json
+
+# Секреты
+.env
+.env.*
+
+# Системные файлы
+.DS_Store
