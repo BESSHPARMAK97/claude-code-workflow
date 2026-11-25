@@ -840,6 +840,45 @@ pako/dist/pako.es5.min.js:
     tellPult({ type: "pto-journal-updated" });
   }
 
+  // реестр объекта запоминается как справочник: люди, организации, материалы — для актов из журнала работ
+  var REG_KEY = "pto-registry";
+  function rememberRegistry(buf, wb, name) {
+    try {
+      var bytes = new Uint8Array(buf), bin = "";
+      for (var i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+      localStorage.setItem(REG_KEY, btoa(bin));
+      var people = rows(wb, "Объект").slice(1).map(function (r) { return clean(r[3]); }).filter(Boolean);
+      var codes = (rows(wb, wb.Sheets["Поступления"] ? "Поступления" : "Материалы", true) || []).slice(1).map(function (r) { return clean(r[0]); }).filter(Boolean);
+      localStorage.setItem("pto-ref", JSON.stringify({ name: name, at: new Date().toISOString(), people: people, codes: codes }));
+      tellPult({ type: "pto-ref-updated" });
+      return { people: people.length, codes: codes.length };
+    } catch (e) { return null; }
+  }
+  // акты по списку работ журнала: даты — из записей журнала, люди и материалы — из запомненного реестра
+  var JW_HEAD = ["Формировать", "Наименование работ", "Участок", "Место (оси, отметки)", "Чертежи", "Материалы (коды через ;)", "Представитель СМО",
+    "Представитель технадзора", "№ акта", "Дата акта (пусто — от руки)", "Начало работ", "Окончание работ", "Доп. доказательства", "Отклонения",
+    "Последующие работы", "Представитель авторского надзора", "Представитель субподрядчика"];
+  function actsFromJournal(works) {
+    var b64 = null; try { b64 = localStorage.getItem(REG_KEY); } catch (e) {}
+    if (!b64) {
+      showReport(["Акты из журнала не сформированы: загрузите один раз реестр Excel объекта — перетащите его в пульт.",
+        "Из реестра берутся люди и организации (лист «Объект») и материалы с документами о качестве (лист «Поступления»)."], "bad");
+      return;
+    }
+    var wb = XLSX.read(b64ToBytes(b64), { type: "array" });
+    var list = works.slice().sort(function (a, b) { var x = a.start || "9", y = b.start || "9"; return x < y ? -1 : x > y ? 1 : 0; });
+    var aoa = [JW_HEAD];
+    list.forEach(function (w, i) {
+      var fl = w.floors || [], floorTxt = fl.length ? (fl.length > 1 ? "этажи " : "этаж ") + fl.join(", ") : "";
+      var next = clean(w.next) || (list[i + 1] ? lowerFirst(clean(list[i + 1].name)) : "");
+      aoa.push(["да", w.name, "", [floorTxt, clean(w.place)].filter(Boolean).join(", "), w.drawings, w.materials, w.cRep, w.tRep, w.no, w.actDate,
+        w.start, w.end, w.evidence, w.deviations, next, w.aRep || "нет", w.sRep || "нет"]);
+    });
+    wb.Sheets["Работы"] = XLSX.utils.aoa_to_sheet(aoa);
+    if (wb.SheetNames.indexOf("Работы") < 0) wb.SheetNames.push("Работы");
+    process(new File([XLSX.write(wb, { type: "array", bookType: "xlsx" })], "работы из журнала (" + list.length + ")"), { fromJournal: true });
+  }
+
   function process(file, opts) {
     opts = opts || {};
     var reader = new FileReader();
@@ -850,7 +889,14 @@ pako/dist/pako.es5.min.js:
         if (opts.pult && !wb.Sheets["Работы"]) { tellPult({ type: "pto-ignored" }); return; }
         tellPult({ type: "pto-handled" }); handled = true;
         $("extra").hidden = true; last = null;
+        var ref = !opts.fromJournal && wb.Sheets["Объект"] ? rememberRegistry(reader.result, wb, file.name) : null;
+        var refLine = ref ? ["", "Реестр запомнен как справочник объекта: людей — " + ref.people + ", партий материалов — " + ref.codes +
+          ". Акты по работам журнала («Журнал работ» → «Работы и акты») формируются с ними."] : [];
         var data = load(wb);
+        if (ref && !data.works.length) {
+          showReport(["Реестр «" + file.name + "»: работ в нём нет — акты формируются из журнала работ."].concat(refLine), "ok");
+          return;
+        }
         var stats = prepare(data);
         var check = validate(data);
         if (check.errors.obj) {
@@ -859,7 +905,7 @@ pako/dist/pako.es5.min.js:
         }
         var tpl = customTemplate || b64ToBytes(window.AOSR_TEMPLATE_B64);
         var acts = render(data, check, tpl);
-        var lines = reportLines(data, check, acts, file.name, stats);
+        var lines = reportLines(data, check, acts, file.name, stats).concat(refLine);
         var hasErr = lines.some(function (l) { return /✗/.test(l); });
         showReport(lines, !acts.length ? "bad" : hasErr ? "mixed" : "ok");
         if (!acts.length) return;
@@ -871,7 +917,6 @@ pako/dist/pako.es5.min.js:
         };
         download(last.kit, "Комплект_АОСР.docx", DOCX);
         $("extra").hidden = false;
-        if (window.parent !== window) pushJournal(true);   // в пульте журнал обновляется сам
       } catch (e) {
         if (opts.pult && !handled) { tellPult({ type: "pto-ignored" }); return; }
         var msg = e && e.properties && e.properties.errors
@@ -897,6 +942,7 @@ pako/dist/pako.es5.min.js:
     $("jr-push").addEventListener("click", function () { pushJournal(); });
     window.addEventListener("message", function (e) {
       if (e.data && e.data.type === "pto-file") process(new File([e.data.buf], e.data.name), { pult: true });
+      if (e.data && e.data.type === "pto-acts") actsFromJournal(e.data.works || []);
     });
     $("dl-vhk").addEventListener("click", function () {
       if (!last) return;

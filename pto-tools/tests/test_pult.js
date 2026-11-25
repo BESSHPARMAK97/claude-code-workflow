@@ -1,62 +1,136 @@
-// ПТО-пульт: распознавание файлов, вкладки, передача реестра в журнал без .json.
+// ПТО-пульт: реестр — справочник объекта; журнал — быстрая запись и список работ; акты — по работам журнала.
 // Запуск из pto-tools: node tests/test_pult.js
 const { chromium } = require('playwright');
-const path = require('path');
+const path = require('path'); const fs = require('fs'); const os = require('os');
+const PizZip = require('pizzip');
 const ROOT = path.resolve(__dirname, '..');
+const PULT = 'file://' + path.join(ROOT, 'dist', 'ПТО_пульт.html');
+const REG = path.join(ROOT, 'tests/fixtures/aosr_с_датами.xlsx');
+const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(d); };
 (async () => {
   const b = await chromium.launch();
-  const p = await (await b.newContext({ acceptDownloads: true, viewport: { width: 1280, height: 860 } })).newPage();
-  const errs = []; p.on('pageerror', e => errs.push(String(e)));
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pult-'));
   let bad = 0; const check = (ok, msg) => { if (!ok) bad++; console.log(`${ok ? 'OK  ' : 'FAIL'} ${msg}`); };
-  await p.goto('file://' + path.join(ROOT, 'dist', 'ПТО_пульт.html')); await p.waitForTimeout(1500);
+  const errs = [];
+  const open = async () => {
+    const ctx = await b.newContext({ acceptDownloads: true, viewport: { width: 1400, height: 900 } });
+    const p = await ctx.newPage(); p.on('pageerror', e => errs.push(String(e)));
+    await p.goto(PULT); await p.waitForTimeout(1500);
+    return { ctx, p };
+  };
+  const frames = async p => Promise.all((await p.$$('iframe')).map(f => f.contentFrame()));
+  const jstate = f => f.evaluate(() => JSON.parse(localStorage.getItem('zpr-journal-v2')));
+
+  let { ctx, p } = await open();
   const tabs = await p.$$eval('nav button', bs => bs.map(x => x.textContent));
   check(tabs.join('|') === 'Акты и журналы|Журнал работ|Формы 2 и 3', 'вкладки: ' + tabs.join(', '));
   const status = () => p.textContent('#status'), active = () => p.$eval('nav button.active', x => x.textContent);
-  const frame = async i => (await p.$$('iframe'))[i].contentFrame();
 
   let dl = p.waitForEvent('download', { timeout: 10000 }).catch(() => null);
   await p.setInputFiles('#file', path.join(ROOT, 'forms_2_3/план_факт.xlsx'));
   let d = await dl; await p.waitForTimeout(400);
-  check(await active() === 'Формы 2 и 3' && /план-факт/.test(await status()) && d && /Формы_2_3_2026-04/.test(d.suggestedFilename()),
-    'план-факт → вкладка «Формы 2 и 3», формы скачаны');
+  check(await active() === 'Формы 2 и 3' && d && /Формы_2_3_2026-04/.test(d.suggestedFilename()), 'план-факт → вкладка «Формы 2 и 3», формы скачаны');
 
-  dl = p.waitForEvent('download', { timeout: 10000 }).catch(() => null);
-  await p.setInputFiles('#file', path.join(ROOT, 'tests/fixtures/aosr_с_датами.xlsx'));
-  d = await dl; await p.waitForTimeout(1000);
-  check(await active() === 'Акты и журналы' && /реестр работ/.test(await status()) && d && d.suggestedFilename() === 'Комплект_АОСР.docx',
-    'реестр → вкладка «Акты и журналы», комплект скачан');
+  // ---------- реестр: акты по его работам + справочник объекта; журнал сам не меняется
+  dl = p.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+  await p.setInputFiles('#file', REG); d = await dl; await p.waitForTimeout(800);
+  let [a, j] = await frames(p);
+  check(await active() === 'Акты и журналы' && d && d.suggestedFilename() === 'Комплект_АОСР.docx', 'реестр → «Акты и журналы», комплект скачан');
+  check(/запомнен как справочник объекта: людей — 6, партий материалов — 20/.test(await a.textContent('#report')), 'реестр запомнен как справочник (люди, материалы)');
+  check(await jstate(a) === null, 'журнал сам не заполняется из реестра');
 
-  const aosr = await frame(0);
-  check(/Журнал создан из реестра: ИТР — 3, актов — 6, записей о работах — 6/.test(await aosr.textContent('#report')), 'журнал создан из реестра сам, без кнопки');
-  check(/Журнал работ обновлён автоматически/.test(await status()) && await p.$eval('nav button:nth-child(2)', x => !!x.querySelector('.dot')), 'пульт сообщил об обновлении и отметил вкладку журнала');
-  check(await aosr.isVisible('#jr-push'), 'кнопка «Передать в журнал работ» осталась для повтора');
+  // ---------- журнал: быстрая запись
+  await p.click('nav button:nth-child(2)'); await p.waitForTimeout(900);
+  [a, j] = await frames(p);
+  check(await j.$eval('nav.tabs [aria-selected="true"]', x => x.dataset.tab) === 's4' && await j.isVisible('#quick'), 'журнал открывается на разделе 4 со строкой быстрой записи');
+  const add = async (date, work, floor, vol, unit, enter) => {
+    await j.fill('#q-date', date); await j.fill('#q-work', work); await j.fill('#q-floor', floor); await j.fill('#q-vol', vol);
+    if (unit) await j.selectOption('#q-unit', unit);
+    if (enter) await j.press('#q-vol', 'Enter'); else await j.click('#qAdd');
+    await p.waitForTimeout(250);
+  };
+  await add('2026-03-10', 'Армирование плиты перекрытия', '2', '3,2', 'т', true);
+  await add('2026-03-11', 'армирование  плиты перекрытия', '2', '2,8', '');
+  await add('2026-03-12', 'Бетонирование плиты перекрытия', '2', '45', 'м³');
+  await add('2026-03-13', 'Армирование плиты перекрытия', '3', '3,0', '');
+  await p.waitForTimeout(500);
+  let st = await jstate(j);
+  check(st.s4.length === 4 && st.s4.every(r => !r._ex) && st.works.length === 2 && !st.s3.length, 'быстрая запись: 4 записи, 2 работы в списке, примеры убраны');
+  check(st.s4.filter(r => /^Армирование/.test(r.work)).every(r => r.unit === 'т' && r.wid === st.s4[0].wid), 'та же работа (без учёта регистра) — одна работа, единица запомнилась');
+  check(/Отставание \d+ дн/.test(await j.textContent('.lag')) && await j.$eval('.lag', x => x.classList.contains('bad')), 'отставание больше 5 дней — красная плашка');
+  await add(ago(0), 'Армирование плиты перекрытия', '4', '1', '');
+  await add(ago(3), 'Бетонирование плиты перекрытия', '3', '40', '');
+  const lagText = await j.textContent('.lag'), ru = s => s.split('-').reverse().join('.');
+  check(!(await j.$eval('.lag', x => x.classList.contains('bad'))) && lagText.includes(ru(ago(1))) && !lagText.includes(ru(ago(3))),
+    'плашка: дни без записей за последнюю неделю (без дня, где запись есть)');
+  await j.click(`[data-none="${ago(1)}"]`); await p.waitForTimeout(500);
+  st = await jstate(j);
+  check(st.s4.some(r => r.date === ago(1) && r.work === 'Работы не производились' && !r.wid), '«работ не было» — запись «Работы не производились»');
+  check(/Дописать оси, отметки: 6 зап\./.test(await j.textContent('#checks')), 'сводка «что дописать» вместо замечаний к каждой строке');
 
-  await p.click('nav button:nth-child(2)'); await p.waitForTimeout(800);
-  const jf = await frame(1);
-  const jst = await jf.evaluate(() => JSON.parse(localStorage.getItem('zpr-journal-v2')));
-  check(jst && jst.s3.length === 6 && jst.s4.length === 6, 'журнал во вкладке видит данные реестра');
-  const nos = jst ? jst.s3.map(a => a.no).sort().join() : '', linked = jst ? jst.s4.map(r => r.aosr).filter(Boolean).sort().join() : '';
-  check(nos && nos === linked, 'у каждой записи раздела 4 — номер её акта (' + linked + ')');
+  // печать за период: этаж — в графе «Место»
+  await j.evaluate(() => { window.print = () => {}; });
+  await j.fill('#pFrom', '2026-03-10'); await j.fill('#pTo', '2026-03-12'); await j.click('#bPrintPeriod');
+  const pr = await j.$eval('#printArea', x => ({ rows: x.querySelectorAll('tbody tr').length, text: x.textContent }));
+  check(pr.rows === 3 && /2 этаж/.test(pr.text) && /с 10\.03\.2026 по 12\.03\.2026/.test(pr.text), 'печать раздела 4 за период: 3 записи, этаж в графе «Место»');
+
+  // ---------- работы и акты
+  await j.click('nav.tabs [data-tab="wk"]'); await p.waitForTimeout(300);
+  for (const i of [0, 1]) { await (await j.$$('input[data-k="act"]'))[i].click(); await p.waitForTimeout(300); }
+  const ppl = await j.$$eval('#peopleList option', xs => xs.map(x => x.value));
+  check(ppl.length === 6, 'в журнале — люди из реестра (для представителей в акте)');
+  const ids = await j.$$eval('input[data-k="act"]', xs => xs.map(x => x.dataset.w));
+  for (const id of ids) {
+    await j.click(`details[data-sid="w-${id}"] summary`);
+    await j.fill(`[data-w="${id}"][data-k="drawings"]`, 'КЖ-1, листы 3–5');
+    await j.fill(`[data-w="${id}"][data-k="materials"]`, 'M01');
+    await j.fill(`[data-w="${id}"][data-k="cRep"]`, ppl[0]);
+    await j.fill(`[data-w="${id}"][data-k="tRep"]`, ppl.find(x => /надзор/i.test(x)) || ppl[1]);
+    await j.fill(`[data-w="${id}"][data-k="evidence"]`, 'исполнительная схема');
+  }
+  await j.fill(`[data-w="${ids[0]}"][data-k="no"]`, 'АОСР-101'); await j.press(`[data-w="${ids[0]}"][data-k="no"]`, 'Tab'); await p.waitForTimeout(300);
+  await j.fill(`[data-w="${ids[1]}"][data-k="no"]`, 'АОСР-102'); await j.press(`[data-w="${ids[1]}"][data-k="no"]`, 'Tab'); await p.waitForTimeout(300);
+  if (!(await j.isVisible(`[data-w="${ids[1]}"][data-k="next"]`))) await j.click(`details[data-sid="w-${ids[1]}"] summary`);
+  await j.fill(`[data-w="${ids[1]}"][data-k="next"]`, 'устройство стяжки'); await p.waitForTimeout(500);
+  st = await jstate(j);
+  const arm = st.works.find(w => /^Армирование/.test(w.name));
+  check(st.s3.some(x => x.no === 'АОСР-101' && /этажи 2, 3, 4/.test(x.name)) && st.s4.filter(r => r.wid === arm._id).every(r => r.aosr === 'АОСР-101'),
+    'отметка «Акт»: акт в разделе 3 (с этажами), № акта — в записях');
+  dl = p.waitForEvent('download', { timeout: 15000 }).catch(() => null);
+  await j.click('#bActs'); d = await dl; await p.waitForTimeout(800);
+  [a, j] = await frames(p);
+  const rep = await a.textContent('#report');
+  check(await active() === 'Акты и журналы' && d && d.suggestedFilename() === 'Комплект_АОСР.docx' && /Сформировано актов: 2/.test(rep) && /Пропущено из-за ошибок: 0/.test(rep),
+    '«Сформировать акты» в журнале → 2 акта по работам журнала');
+  const kp = path.join(tmp, 'kit.docx'); if (d) await d.saveAs(kp);
+  const xml = d ? new PizZip(fs.readFileSync(kp)).file('word/document.xml').asText().replace(/<[^>]+>/g, '') : '';
+  check(xml.includes('АОСР-101') && /«10» марта 2026/.test(xml) && xml.includes(`«${ago(0).slice(8)}»`), 'в акте даты работ — из записей журнала (первая и последняя)');
 
   // ссылки акт ⇄ запись
-  await jf.click('nav.tabs [data-tab="s3"]'); await p.waitForTimeout(300);
-  const lnks = await jf.$$('tbody .lnk[data-goto="s4"]');
-  check(lnks.length === 6, 'раздел 3: у актов ссылки на записи раздела 4 (' + lnks.length + ')');
+  await p.click('nav button:nth-child(2)'); await p.waitForTimeout(800);
+  [a, j] = await frames(p);
+  await j.click('nav.tabs [data-tab="s3"]'); await p.waitForTimeout(300);
+  const lnks = await j.$$('tbody .lnk[data-goto="s4"]');
   if (lnks.length) { await lnks[0].click(); await p.waitForTimeout(300); }
-  const tab = () => jf.$eval('nav.tabs [aria-selected="true"]', x => x.dataset.tab);
-  check(await tab() === 's4' && !!(await jf.$('tbody tr.hl')), 'ссылка открывает раздел 4 и подсвечивает запись');
-  if (await jf.$('tbody tr.hl .lnk')) { await jf.click('tbody tr.hl .lnk[data-goto="s3"]'); await p.waitForTimeout(300); }
-  check(await tab() === 's3' && !!(await jf.$('tbody tr.hl')), 'из записи раздела 4 — переход к акту');
-
-  await p.click('nav button:nth-child(1)'); await aosr.click('#jr-push'); await p.waitForTimeout(800);
-  check(/Журнал дополнен: ИТР \+0, акты \+0, записи о работах \+0/.test(await aosr.textContent('#report')), 'повторная передача не дублирует записи');
-
-  dl = p.waitForEvent('download', { timeout: 10000 }).catch(() => null);
-  await p.setInputFiles('#file', path.join(ROOT, 'tests/fixtures/aosr_с_датами.xlsx')); await dl; await p.waitForTimeout(1000);
-  check(/обновлён автоматически: ИТР \+0, акты \+0, записи о работах \+0/.test(await aosr.textContent('#report')), 'повторная загрузка реестра не дублирует записи');
+  check(lnks.length === 6 && await j.$eval('nav.tabs [aria-selected="true"]', x => x.dataset.tab) === 's4' && !!(await j.$('tbody tr.hl')), 'ссылки «акт ⇄ запись» работают');
 
   await p.setInputFiles('#file', path.join(ROOT, 'm29/материалы.xlsx')); await p.waitForTimeout(3000);
   check(/не распознан/.test(await status()), 'чужой файл: понятное сообщение');
+  await ctx.close();
+
+  // ---------- акты из журнала без реестра — понятная подсказка
+  ({ ctx, p } = await open());
+  await p.click('nav button:nth-child(2)'); await p.waitForTimeout(800);
+  [a, j] = await frames(p);
+  await j.fill('#q-work', 'Монтаж закладных'); await j.click('#qAdd'); await p.waitForTimeout(300);
+  await j.click('nav.tabs [data-tab="wk"]'); await p.waitForTimeout(300);
+  await (await j.$('input[data-k="act"]')).click(); await p.waitForTimeout(300);
+  await j.click('#bActs'); await p.waitForTimeout(800);
+  [a] = await frames(p);
+  check(/загрузите один раз реестр Excel объекта/.test(await a.textContent('#report')), 'без реестра: подсказка загрузить реестр один раз');
+  await ctx.close();
+
   if (errs.length) { bad++; console.log('Ошибки JS:', errs); }
   await b.close(); process.exit(bad ? 1 : 0);
 })();

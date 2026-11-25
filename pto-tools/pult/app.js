@@ -70,6 +70,13 @@
   window.addEventListener("message", function (e) {
     var d = e.data || {}, tool = TOOLS.filter(function (t) { return t.id === d.tool; })[0];
     if (!tool) return;
+    if (d.type === "pto-make-acts" && frames.aosr) {   // журнал → акты по его списку работ
+      pending = null; show("aosr");
+      frames.aosr.contentWindow.postMessage({ type: "pto-acts", works: d.works }, "*");
+      status("Акты по работам журнала (" + (d.works || []).length + ") — вкладка «Акты и журналы».", "ok");
+      return;
+    }
+    if (d.type === "pto-ref-updated" && frames.journal) { load("journal"); return; }   // журнал подхватит людей и материалы
     if (d.type === "pto-handled" && pending) {
       pending.handled = true;
       show(tool.id);

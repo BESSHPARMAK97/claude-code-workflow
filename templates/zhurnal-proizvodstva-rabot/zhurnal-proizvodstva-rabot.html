@@ -83,6 +83,21 @@ td.okc{color:var(--ok)!important}
 .lnk{display:inline-block;margin:2px 4px 0 0;padding:1px 7px;font-size:12px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--accent);cursor:pointer}
 .lnk:hover{border-color:var(--accent)}
 table.ed tr.hl td{box-shadow:inset 0 0 0 9999px color-mix(in srgb,var(--accent) 16%,transparent)}
+/* быстрая запись, отставание, список работ */
+.quick{display:grid;grid-template-columns:150px minmax(220px,1fr) 90px 100px 100px auto;gap:8px;align-items:end;background:var(--accent-soft);border:1px solid var(--line);border-radius:8px;padding:12px;margin-bottom:12px}
+.quick label{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted)}
+.quick input,.quick select{background:var(--panel)}
+@media (max-width:760px){.quick{grid-template-columns:1fr 1fr}.quick .qw{grid-column:1/-1}}
+.lag{border-radius:8px;padding:9px 12px;margin-bottom:12px;font-size:13px;background:var(--bg);border:1px solid var(--line)}
+.lag.bad{background:var(--alert);color:var(--alert-fg);border-color:transparent}
+.lag .day{display:inline-flex;gap:4px;align-items:center;margin:4px 10px 0 0;white-space:nowrap}
+.lag .day button{padding:2px 8px;font-size:12px}
+.tagA{display:inline-block;font-size:11.5px;color:var(--accent);margin:2px 0 0 8px}
+table.ed td.calc{color:var(--muted);font-size:12.5px;padding:8px}
+table.ed td.ck{text-align:center;padding-top:9px}
+table.ed td.ck input{width:auto}
+.period{display:inline-flex;gap:6px;align-items:center;flex-wrap:wrap;margin-left:auto;font-size:12.5px;color:var(--muted)}
+.period input{width:140px}
 .rowdel{border:none;background:none;color:var(--muted);padding:6px;font-size:16px;line-height:1}
 .rowdel:hover{color:var(--alert-fg)}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:14px}
@@ -292,12 +307,23 @@ function normalize(s){
     if(r.cond!==undefined&&r.weather===undefined){ const m=String(r.cond).match(/([+\-−]?\d+[.,]?\d*)\s*°?/); r.temp=m?m[1].replace("−","-"):""; r.weather=r.cond; delete r.cond }
     if(r.vol&&r.unit===undefined){ const m=String(r.vol).match(/([\d.,]+)\s*(.*)/); if(m){r.vol=m[1];r.unit=m[2]||""} }
   });
+  // список работ: одна работа — много записей раздела 4 и (если нужен) один акт
+  if(!Array.isArray(s.works)) s.works=[];
+  s.s4.forEach(r=>{
+    if(r.wid!==undefined) return;
+    const name=String(r.work||"").trim(); r.wid="";
+    if(!name||/^работы не производились/i.test(name)) return;
+    let w=s.works.find(x=>normW(x.name)===normW(name));
+    if(!w){ w={_id:uid(),name,unit:r.unit||""}; if(r._ex) w._ex=true; if(r.aosr){ w.act=true; w.no=String(r.aosr).split(/[,;]/)[0].trim() } s.works.push(w) }
+    r.wid=w._id;
+  });
   return s;
 }
+const normW=v=>String(v??"").toLowerCase().replace(/\s+/g," ").trim();
 let state=null;
 try{ state=normalize(JSON.parse(localStorage.getItem(KEY))) }catch(e){}
 if(!state){ try{ state=normalize(JSON.parse(localStorage.getItem(OLDKEY))) }catch(e){} }
-if(!state) state=sample();
+if(!state) state=normalize(sample());
 
 let saveT;
 function persist(){ clearTimeout(saveT); saveT=setTimeout(()=>{ try{localStorage.setItem(KEY,JSON.stringify(state))}catch(e){} },300) }
@@ -318,15 +344,16 @@ function cellValue(col,row){ // row: {src,own}
 }
 
 /* ---------- отрисовка ---------- */
-let current="t";
-try{ current=localStorage.getItem(KEY+"-tab")||"t" }catch(e){}
-if(current!=="t"&&!ALL.some(x=>x.id===current)) current="t";
+let current="s4";   // журнал открывается на записях о работах
+try{ current=localStorage.getItem(KEY+"-tab")||"s4" }catch(e){}
+if(current!=="t"&&current!=="wk"&&!ALL.some(x=>x.id===current)) current="s4";
 
 function renderTabs(){
   const cnt=id=>SECTIONS.some(s=>s.id===id)?state[id].length:kindRows(JOURNALS.find(j=>j.id===id).kind).length;
   document.getElementById("tabs").innerHTML=
     `<button role="tab" data-tab="t" aria-selected="${current==="t"}">Титульный лист</button>`+
-    SECTIONS.map(t=>`<button role="tab" data-tab="${t.id}" aria-selected="${t.id===current}">${esc(t.short)}<span class="cnt">${cnt(t.id)}</span></button>`).join("")+
+    SECTIONS.map(t=>`<button role="tab" data-tab="${t.id}" aria-selected="${t.id===current}">${esc(t.short)}<span class="cnt">${cnt(t.id)}</span></button>`+
+      (t.id==="s4"?`<button role="tab" data-tab="wk" aria-selected="${current==="wk"}">Работы и акты<span class="cnt">${state.works.filter(w=>!w._ex).length}</span></button>`:"")).join("")+
     `<span class="sep" aria-hidden="true"></span><span class="tabl">Спецжурналы:</span>`+
     JOURNALS.map(t=>`<button role="tab" class="conc" data-tab="${t.id}" aria-selected="${t.id===current}">${esc(t.short)}<span class="cnt">${cnt(t.id)}</span></button>`).join("");
 }
@@ -355,6 +382,8 @@ function alertClass(sec,k,v,row){
 
 function renderMain(){
   const m=document.getElementById("main");
+  if(current==="s4"){ renderS4(m); return }
+  if(current==="wk"){ renderWorks(m); return }
   if(current==="t"){
     m.innerHTML=`<section class="sec"><h2>Титульный лист</h2>
       <p class="hint">Журнал ведётся с первого дня работ на объекте лицом, ответственным за производство работ. После распечатки журнал нумеруется, прошнуровывается, скрепляется печатью и подписью руководителя подрядной организации.</p>
@@ -392,6 +421,160 @@ function renderMain(){
   renderChecks();
   mainEl.querySelectorAll("td textarea").forEach(autosize);
 }
+/* ---------- раздел 4: быстрая запись (дата, работа, этаж, объём), остальное — «Подробнее» ---------- */
+let REF={}; try{ REF=JSON.parse(localStorage.getItem("pto-ref"))||{} }catch(e){}   // справочник объекта из ПТО-пульта: люди, коды материалов
+const UNITS=SECTIONS.find(s=>s.id==="s4").cols.find(c=>c[0]==="unit")[4];
+const workOf=id=>state.works.find(w=>w._id===id);
+const q={date:today(),work:"",floor:"",vol:"",unit:""};
+const addDays=(d,n)=>{ const x=new Date(d+"T00:00:00"); x.setDate(x.getDate()+n); return x.getFullYear()+"-"+String(x.getMonth()+1).padStart(2,"0")+"-"+String(x.getDate()).padStart(2,"0") };
+const daysBetween=(a,b)=>Math.round((new Date(b+"T00:00:00")-new Date(a+"T00:00:00"))/864e5);
+function datalists(){
+  return `<datalist id="worksList">${state.works.filter(w=>!w._ex).map(w=>`<option value="${esc(w.name)}">`).join("")}</datalist>`+
+    `<datalist id="peopleList">${(REF.people||[]).map(p=>`<option value="${esc(p)}">`).join("")}</datalist>`+
+    `<datalist id="codesList">${(REF.codes||[]).map(p=>`<option value="${esc(p)}">`).join("")}</datalist>`;
+}
+function lagHtml(){
+  const real=state.s4.filter(r=>!r._ex&&r.date), t=today();
+  if(!real.length) return `<div class="lag">Записей ещё нет. Начните с сегодняшнего дня: дата, работа, этаж, объём — остальное можно дописать потом.</div>`;
+  const has=new Set(real.map(r=>r.date)), first=real.map(r=>r.date).sort()[0], last=real.map(r=>r.date).sort().pop();
+  const miss=[]; for(let i=6;i>=1;i--){ const d=addDays(t,-i); if(d>=first&&!has.has(d)) miss.push(d) }
+  const lag=Math.max(0,daysBetween(last,t)), bad=lag>5;
+  if(!miss.length&&has.has(t)) return `<div class="lag">Записи ведутся без отставания: последняя — ${fmtDate(last)}.</div>`;
+  return `<div class="lag${bad?" bad":""}"><strong>${bad?`Отставание ${lag} дн. — больше 5 дней.`:`Последняя запись — ${fmtDate(last)}.`}</strong>`+
+    (miss.length?` Нет записей за дни (если работ не было — отметьте):<br>`+miss.map(d=>`<span class="day">${fmtDate(d)} <button type="button" data-pick="${d}" title="Записать работы за этот день">записать</button><button type="button" data-none="${d}">работ не было</button></span>`).join(""):"")+
+    (has.has(t)?"":` <span class="day">Сегодня записей ещё нет.</span>`)+`</div>`;
+}
+function detailsS4(r,i){
+  const cols=[["shift","Смена","s",["","1","2","3"]],["jr","В спецжурнал","s",JR_OPTS],["aosr","АОСР №"],["temp","t воздуха, °C","n"],["weather","Погодные условия"],
+    ["exec","Исполнитель (организация, бригада)"],["resp","Ответственный: Ф.И.О."]];
+  let filled=0; cols.forEach(c=>{ if(r[c[0]]) filled++ });
+  const js=r.jr?JOURNALS.filter(j=>j.kind===r.jr):[];
+  const spec=js.map(j=>{ const own=(state[j.id][r._id] ||= {});
+    return `<div class="subj"><div class="subt">${esc(j.title)}</div><div class="subgrid">${j.cols.filter(c=>c[3]!=="src"&&c[3]!=="calc").map(c=>
+      `<label class="field"><span>${esc(c[1])}</span>${control(c,own[c[0]]??"",`x-${j.id}-${r._id}-${c[0]}`,`data-j="${j.id}" data-id="${r._id}"`)}</label>`).join("")}</div></div>` }).join("");
+  return `<tr class="subrow" data-sub="${r._id}"><td></td><td colspan="7"><details data-sid="${r._id}"${openSubs.has(r._id)?" open":""}>
+    <summary>Подробнее: смена, погода, исполнитель${js.length?", данные спецжурнала":""} <span class="sub">· заполнено ${filled} из ${cols.length} — можно дописать позже</span></summary>
+    <div class="subgrid">${cols.map(c=>`<label class="field"><span>${esc(c[1])}</span>${control([c[0],c[1],0,c[2]||"t",c[3]],r[c[0]]??"",`s4-${i}-${c[0]}`,`data-r="${i}"`)}</label>`).join("")}</div>${spec}</details></td></tr>`;
+}
+function renderS4(m){
+  const sec=SECTIONS.find(s=>s.id==="s4"), rows=state.s4;
+  const body=rows.map((r,i)=>`<tr class="${r._ex?"example":""}"><td class="n">${i+1}</td>
+    <td>${control(["date","Дата",0,"d"],r.date||"",`s4-${i}-date`,`data-r="${i}"`)}</td>
+    <td><input type="text" list="worksList" id="s4-${i}-work" data-r="${i}" data-k="work" aria-label="Работа" value="${esc(r.work)}">${r.aosr?`<span class="tagA">АОСР № ${esc(r.aosr)}</span>`:""}${actLinks(r)}</td>
+    <td><input type="text" id="s4-${i}-floor" data-r="${i}" data-k="floor" aria-label="Этаж" value="${esc(r.floor)}"></td>
+    <td>${control(["vol","Объём",0,"n"],r.vol??"",`s4-${i}-vol`,`data-r="${i}"`)}</td>
+    <td>${control(["unit","Ед. изм.",0,"s",UNITS],r.unit??"",`s4-${i}-unit`,`data-r="${i}"`)}</td>
+    <td><textarea rows="1" id="s4-${i}-place" data-r="${i}" data-k="place" aria-label="Оси, отметки" placeholder="дописать">${esc(r.place)}</textarea></td>
+    <td><button class="rowdel" data-del="${i}" title="Удалить строку" aria-label="Удалить строку ${i+1}">×</button></td></tr>`+detailsS4(r,i)).join("");
+  m.innerHTML=`<section class="sec"><h2>${esc(sec.title)}</h2>
+    <p class="hint">Быстрая запись: дата, работа, этаж, объём. Работа выбирается из списка (или вписывается новая — она добавится в «Работы и акты»). Оси, отметки, погоду и остальное можно дописать позже.</p>
+    ${lagHtml()}
+    <div class="quick" id="quick">
+      <label>Дата<input type="date" id="q-date" value="${esc(q.date)}"></label>
+      <label class="qw">Работа<input type="text" id="q-work" list="worksList" placeholder="начните вводить — подскажет из списка" value="${esc(q.work)}"></label>
+      <label>Этаж<input type="text" id="q-floor" value="${esc(q.floor)}"></label>
+      <label>Объём<input type="text" id="q-vol" inputmode="decimal" value="${esc(q.vol)}"></label>
+      <label>Ед. изм.<select id="q-unit">${UNITS.map(u=>`<option${u===q.unit?" selected":""}>${esc(u)}</option>`).join("")}</select></label>
+      <button class="primary" id="qAdd" type="button">Добавить запись</button>
+    </div>
+    <div class="tablewrap"><table class="ed" style="min-width:900px"><thead><tr><th style="text-align:center">№</th><th style="width:150px">Дата</th><th>Работа</th>
+      <th style="width:80px">Этаж</th><th style="width:90px">Объём</th><th style="width:95px">Ед. изм.</th><th style="width:22%">Оси, отметки</th><th></th></tr></thead>
+      <tbody>${body||`<tr><td colspan="8" class="empty">Записей пока нет.</td></tr>`}</tbody></table></div>
+    <div class="bar">
+      <button id="bSort">Упорядочить по дате</button>
+      ${rows.some(r=>r._ex)?`<span class="tag">строки-примеры исчезнут после первой записи</span>`:""}
+      <span class="period">Печать для переписывания: с <input type="date" id="pFrom" value="${esc(addDays(today(),-6))}"> по <input type="date" id="pTo" value="${esc(today())}"> <button id="bPrintPeriod">Печать раздела 4</button></span>
+    </div><div class="checks" id="checks"></div></section>${datalists()}`;
+  renderChecks();
+  mainEl.querySelectorAll("td textarea").forEach(autosize);
+}
+function sortS4(){ state.s4.sort((a,b)=>(a.date||"9").localeCompare(b.date||"9")||(a.shift||"").localeCompare(b.shift||"")) }
+function dropExamples(){
+  if(!state.s4.some(r=>r._ex)&&!state.works.some(w=>w._ex)) return;
+  // первая настоящая запись — убираем строки-примеры во всех разделах
+  state.s4.filter(r=>r._ex).forEach(r=>JOURNALS.forEach(j=>delete state[j.id][r._id]));
+  SECTIONS.forEach(sec=>{ state[sec.id]=state[sec.id].filter(r=>!r._ex) }); state.works=state.works.filter(w=>!w._ex);
+}
+// найти работу по названию или добавить новую в список
+function workByName(name,unit){
+  let w=state.works.find(x=>!x._ex&&normW(x.name)===normW(name));
+  if(!w){ w={_id:uid(),name:name.trim(),unit:unit||""}; state.works.push(w) }
+  else if(unit&&!w.unit) w.unit=unit;
+  return w;
+}
+function linkRecord(r){
+  const name=String(r.work||"").trim();
+  if(!name||/^работы не производились/i.test(name)){ r.wid=""; return }
+  const w=workByName(name,r.unit); r.wid=w._id; r.work=w.name;
+  if(!r.unit&&w.unit) r.unit=w.unit;
+  r.aosr=w.act&&w.no?w.no:"";
+  if(!r._jrManual) r.jr=guessJr(w.name);
+}
+function quickAdd(){
+  const d=document.getElementById("q-date").value, name=document.getElementById("q-work").value.trim();
+  if(!d||!name){ toast("Укажите дату и работу"); (d?document.getElementById("q-work"):document.getElementById("q-date")).focus(); return }
+  dropExamples();
+  const unit=document.getElementById("q-unit").value, w=workByName(name,unit);
+  const prev=[...state.s4].reverse().find(r=>r.wid===w._id), last=state.s4[state.s4.length-1];
+  const r={_id:uid(),date:d,shift:"",wid:w._id,work:w.name,floor:document.getElementById("q-floor").value.trim(),vol:document.getElementById("q-vol").value.trim(),
+    unit:unit||w.unit||"",place:prev?prev.place||"":"",jr:guessJr(w.name),aosr:w.act&&w.no?w.no:"",temp:"",weather:"",exec:last?last.exec||"":"",resp:last?last.resp||"":""};
+  state.s4.push(r); sortS4(); persist();
+  Object.assign(q,{date:d,work:"",floor:r.floor,vol:"",unit:""});
+  renderTabs(); renderMain(); toast("Запись добавлена: "+fmtDate(d)+" — "+w.name);
+  document.getElementById("q-work").focus();
+}
+
+/* ---------- работы и акты: список работ объекта; акт — по работе с отметкой ---------- */
+const WK_ACT=[["place","Оси, отметки для акта (пусто — из записей)"],["drawings","Чертежи (марка, листы)"],["materials","Материалы: коды партий через ; (из реестра)",0,"codesList"],
+  ["evidence","Доп. доказательства (исп. схемы, протоколы)"],["deviations","Отклонения от проекта (пусто — отсутствуют)"],["next","Последующие работы (пусто — следующий акт)"],
+  ["cRep","Представитель СМО",0,"peopleList"],["tRep","Представитель технадзора",0,"peopleList"],["aRep","Представитель авторского надзора (пусто — нет)",0,"peopleList"],
+  ["sRep","Представитель субподрядчика (пусто — нет)",0,"peopleList"],["actDate","Дата акта (пусто — впишете от руки)","d"]];
+const recsOfWork=id=>state.s4.filter(r=>r.wid===id&&r.date&&!r._ex);
+function spanOf(id){ const ds=recsOfWork(id).map(r=>r.date).sort(); return ds.length?[ds[0],ds[ds.length-1]]:null }
+function floorsOf(id){ return [...new Set(recsOfWork(id).map(r=>String(r.floor||"").trim()).filter(Boolean))].sort((a,b)=>(parseFloat(a)||0)-(parseFloat(b)||0)||a.localeCompare(b)) }
+// номер акта и название — в записи раздела 4 и в перечень актов (раздел 3)
+function syncWork(w){
+  state.s4.forEach(r=>{ if(r.wid===w._id){ r.work=w.name; r.aosr=w.act&&w.no?w.no:"" } });
+  if(!(w.act&&w.no)) return;
+  let a=state.s3.find(x=>x._wid===w._id)||state.s3.find(x=>normNo(x.no)===normNo(w.no));
+  if(!a){ a={no:"",name:"",date:"",who:"",note:""}; state.s3.push(a) }
+  const fl=floorsOf(w._id);
+  a._wid=w._id; a.no=w.no; delete a._ex;
+  a.name=w.name+(fl.length?(fl.length>1?", этажи ":", этаж ")+fl.join(", "):"")+(w.place?", "+w.place:"");
+  if(w.actDate) a.date=w.actDate;
+}
+function renderWorks(m){
+  const ws=state.works.filter(w=>!w._ex), inPult=window.parent!==window;
+  const body=ws.map((w,i)=>{ const sp=spanOf(w._id), n=recsOfWork(w._id).length, fl=floorsOf(w._id);
+    return `<tr><td class="n">${i+1}</td>
+      <td><input type="text" data-w="${w._id}" data-k="name" aria-label="Наименование работы" value="${esc(w.name)}"></td>
+      <td>${control(["unit","Ед. изм.",0,"s",UNITS],w.unit||"",`wk-${i}-unit`,`data-w="${w._id}"`)}</td>
+      <td class="calc">${n?`<button type="button" class="lnk" data-goto="s4" data-id="${esc(recsOfWork(w._id)[0]._id)}">${n} зап.</button>`:"—"}</td>
+      <td class="calc">${esc(fl.join(", ")||"—")}</td>
+      <td class="calc">${sp?esc(fmtDate(sp[0])+(sp[1]!==sp[0]?" – "+fmtDate(sp[1]):"")):"—"}</td>
+      <td class="ck"><input type="checkbox" data-w="${w._id}" data-k="act" aria-label="Нужен акт"${w.act?" checked":""}></td>
+      <td>${w.act?`<input type="text" data-w="${w._id}" data-k="no" aria-label="№ акта" placeholder="авто" value="${esc(w.no)}">`:""}</td>
+      <td><button class="rowdel" data-wdel="${w._id}" title="Удалить работу" aria-label="Удалить работу ${i+1}">×</button></td></tr>`+
+      (w.act?`<tr class="subrow"><td></td><td colspan="8"><details data-sid="w-${w._id}"${openSubs.has("w-"+w._id)?" open":""}><summary>Данные для акта <span class="sub">· даты акта — по записям: ${sp?esc(fmtDate(sp[0])+" – "+fmtDate(sp[1])):"записей нет"}</span></summary>
+        <div class="subgrid">${WK_ACT.map(c=>`<label class="field"><span>${esc(c[1])}</span>${c[2]==="d"?`<input type="date" data-w="${w._id}" data-k="${c[0]}" value="${esc(w[c[0]])}">`:
+          `<input type="text" data-w="${w._id}" data-k="${c[0]}"${c[3]?` list="${c[3]}"`:""} value="${esc(w[c[0]])}">`}</label>`).join("")}</div></details></td></tr>`:"");
+  }).join("");
+  m.innerHTML=`<section class="sec"><h2>Работы и акты</h2>
+    <p class="hint">Один список работ на объект: записи журнала ссылаются на работу, а акт скрытых работ оформляется по работе с отметкой «Акт». Даты акта берутся из записей журнала (первая и последняя), этажи — из записей. Люди, организации и материалы для актов — из реестра Excel объекта, загруженного в ПТО-пульт.</p>
+    <div class="tablewrap"><table class="ed" style="min-width:900px"><thead><tr><th style="text-align:center">№</th><th>Наименование работы</th><th style="width:95px">Ед. изм.</th><th style="width:80px">Записей</th>
+      <th style="width:100px">Этажи</th><th style="width:170px">Период по журналу</th><th style="width:50px">Акт</th><th style="width:140px">№ акта</th><th></th></tr></thead>
+      <tbody>${body||`<tr><td colspan="9" class="empty">Работ пока нет — они появятся из записей раздела 4.</td></tr>`}</tbody></table></div>
+    <div class="bar"><button id="wAdd">Добавить работу</button>
+      ${inPult?`<button class="primary" id="bActs">Сформировать акты (Word)</button>`:`<span class="tag">Акты формируются в ПТО-пульте (вкладка «Журнал работ»)</span>`}
+    </div><div class="checks" id="checks"></div></section>${datalists()}`;
+  renderChecks();
+}
+function actPayload(){
+  return state.works.filter(w=>w.act&&!w._ex).map(w=>{ const sp=spanOf(w._id);
+    const places=[...new Set(recsOfWork(w._id).map(r=>String(r.place||"").trim()).filter(Boolean))];
+    return {name:w.name,no:w.no||"",start:sp?sp[0]:"",end:sp?sp[1]:"",floors:floorsOf(w._id),place:w.place||places.join("; "),drawings:w.drawings||"",materials:w.materials||"",
+      evidence:w.evidence||"",deviations:w.deviations||"",next:w.next||"",cRep:w.cRep||"",tRep:w.tRep||"",aRep:w.aRep||"",sRep:w.sRep||"",actDate:w.actDate||""} });
+}
 function actLinks(r){ return aosrNos(r).map(n=>actOf(n)).filter(Boolean).map(a=>`<button type="button" class="lnk" data-goto="s3" data-no="${esc(normNo(a.no))}" title="Открыть акт в разделе 3">к акту</button>`).join("") }
 function goTo(id,match){
   current=id; try{localStorage.setItem(KEY+"-tab",current)}catch(_){}
@@ -423,15 +606,23 @@ function autosize(t){ t.style.height="auto"; t.style.height=Math.max(t.scrollHei
 function renderChecks(){
   const el=document.getElementById("checks"); if(!el) return;
   const out=[]; const t=today();
-  if(current==="s4"){ const rows=state.s4;
-    rows.forEach((r,i)=>{
+  if(current==="s4"){ const rows=state.s4.filter(r=>!r._ex&&!/^работы не производились/i.test(r.work||""));
+    // сводка «что дописать», а не замечание к каждой строке: быстрая запись — нормальный порядок работы
+    const miss=(k,l)=>{ const n=rows.filter(r=>!String(r[k]??"").trim()).length; if(n) out.push(`Дописать ${l}: ${n} зап.`) };
+    miss("place","оси, отметки"); miss("resp","ответственного"); miss("weather","погоду");
+    state.s4.forEach((r,i)=>{
       if(!r.date) out.push(`Строка ${i+1}: не указана дата.`);
-      if(!r.resp) out.push(`Строка ${i+1}: не указан ответственный.`);
-      if(!r.place) out.push(`Строка ${i+1}: не указано место работ (оси, отметки).`);
-      aosrNos(r).forEach(n=>{ if(!actOf(n)) out.push(`Строка ${i+1}: акта № ${String(r.aosr).trim()} нет в разделе 3.`) });
       if(r.jr===CONCRETE&&r.unit&&r.unit!=="м³") out.push(`Строка ${i+1}: для бетонных работ объём указывается в м³.`);
-      if(i>0&&r.date&&rows[i-1].date&&r.date<rows[i-1].date) out.push(`Строка ${i+1}: дата раньше предыдущей записи — нарушена хронология.`);
+      if(i>0&&r.date&&state.s4[i-1].date&&r.date<state.s4[i-1].date) out.push(`Строка ${i+1}: дата раньше предыдущей записи — нажмите «Упорядочить по дате».`);
     });}
+  if(current==="wk"){ const acts=state.works.filter(w=>w.act&&!w._ex);
+    acts.forEach(w=>{
+      if(!recsOfWork(w._id).length) out.push(`«${w.name}»: в журнале нет записей — даты акта будут пустыми.`);
+      if(!w.drawings) out.push(`«${w.name}»: не указаны чертежи.`);
+      if(!w.cRep||!w.tRep) out.push(`«${w.name}»: не выбраны представители СМО и технадзора.`);
+    });
+    if(acts.length&&!(REF.people||[]).length) out.push("Реестр Excel объекта ещё не загружен в ПТО-пульт — списка людей и материалов нет.");
+  }
   if(current==="s5") state.s5.forEach((r,i)=>{ if(r.term&&r.term<t&&!r.done&&r.text) out.push(`Строка ${i+1}: срок устранения истёк (${fmtDate(r.term)}), отметки об устранении нет.`) });
   if(current==="s3") state.s3.forEach((r,i)=>{ if(!r.date) out.push(`Строка ${i+1}: не указана дата подписания акта.`) });
   if(current==="s1") state.s1.forEach((r,i)=>{ if(!r.att) out.push(`Строка ${i+1}: нет приказа о назначении / аттестата.`) });
@@ -466,6 +657,23 @@ const mainEl=document.getElementById("main");
 function onEdit(e){
   const t=e.target;
   if(t.dataset.t){ state.title[t.dataset.t]=t.value; persist(); return; }
+  if(t.dataset.w){   // список работ
+    const w=workOf(t.dataset.w); if(!w) return; const k=t.dataset.k;
+    if(k==="act"){
+      w.act=t.checked;
+      if(w.act){ const prev=[...state.works].reverse().find(x=>x!==w&&x.act&&!x._ex);   // люди — как в предыдущем акте
+        if(prev) ["cRep","tRep","aRep","sRep"].forEach(f=>{ if(!w[f]&&prev[f]) w[f]=prev[f] }); }
+    } else w[k]=t.value;
+    syncWork(w); persist();
+    if(e.type==="change"&&(k==="act"||k==="name"||k==="no"||k==="unit")){ renderTabs(); renderMain() } else renderChecks();
+    return;
+  }
+  if(current==="s4"&&t.dataset.k==="work"&&t.dataset.r!==undefined){   // работа в записи: из списка или новая
+    const r=state.s4[+t.dataset.r]; if(!r) return; r.work=t.value; if(r._ex){ delete r._ex }
+    if(e.type==="change"){ linkRecord(r); persist(); renderTabs(); renderMain() } else persist();
+    return;
+  }
+  if(current==="s4"&&t.dataset.k==="jr"&&e.type==="change"){ const r=state.s4[+t.dataset.r]; if(r){ r.jr=t.value; r._jrManual=true; persist(); renderTabs(); renderMain() } return }
   if(!t.dataset.k) return;
   if(t.tagName==="TEXTAREA") autosize(t);
   if(t.dataset.j){ const o=(state[t.dataset.j][t.dataset.id] ||= {}); o[t.dataset.k]=t.value; persist(); return; }
@@ -498,8 +706,36 @@ mainEl.addEventListener("toggle",e=>{ const d=e.target; if(!d.dataset||!d.datase
   d.open?openSubs.add(d.dataset.sid):openSubs.delete(d.dataset.sid);
   if(d.open) d.querySelectorAll("textarea").forEach(autosize); },true);
 mainEl.addEventListener("change",onEdit);
+mainEl.addEventListener("keydown",e=>{   // Enter в строке быстрой записи — добавить
+  if(e.key==="Enter"&&e.target.closest("#quick")){ e.preventDefault(); quickAdd() }
+});
+mainEl.addEventListener("input",e=>{ const id=e.target.id;   // черновик быстрой записи не теряется при перерисовке
+  if(id==="q-date") q.date=e.target.value; else if(id==="q-work") q.work=e.target.value; else if(id==="q-floor") q.floor=e.target.value;
+  else if(id==="q-vol") q.vol=e.target.value; else if(id==="q-unit") q.unit=e.target.value;
+  if(id==="q-work"){ const w=state.works.find(x=>!x._ex&&normW(x.name)===normW(e.target.value)); const u=document.getElementById("q-unit"); if(w&&w.unit&&u&&!u.value){ u.value=w.unit; q.unit=w.unit } }
+});
 mainEl.addEventListener("click",e=>{
   if(e.target.closest("#bGo4")){ current="s4"; renderTabs(); renderMain(); return }
+  if(e.target.closest("#qAdd")){ quickAdd(); return }
+  const pk=e.target.closest("[data-pick]");
+  if(pk){ q.date=pk.dataset.pick; document.getElementById("q-date").value=q.date; document.getElementById("q-work").focus(); return }
+  const nd=e.target.closest("[data-none]");
+  if(nd){ dropExamples(); const last=state.s4[state.s4.length-1];
+    state.s4.push({_id:uid(),date:nd.dataset.none,shift:"",wid:"",work:"Работы не производились",floor:"",vol:"",unit:"",place:"",jr:"",aosr:"",temp:"",weather:"",exec:"",resp:last?last.resp||"":""});
+    sortS4(); persist(); renderTabs(); renderMain(); toast(fmtDate(nd.dataset.none)+": работы не производились"); return }
+  if(e.target.closest("#bPrintPeriod")){ printPeriod(document.getElementById("pFrom").value,document.getElementById("pTo").value); return }
+  if(e.target.closest("#wAdd")){ const w={_id:uid(),name:"",unit:""}; state.works.push(w); persist(); renderTabs(); renderMain();
+    const f=mainEl.querySelector(`[data-w="${w._id}"][data-k="name"]`); f&&f.focus(); return }
+  const wd=e.target.closest("[data-wdel]");
+  if(wd){ const id=wd.dataset.wdel, n=recsOfWork(id).length;
+    if(n){ toast(`По работе ${n} зап. в журнале — сначала удалите или перенесите их`); return }
+    if(!wd.dataset.armed){ wd.dataset.armed="1"; wd.textContent="Удалить?"; wd.style.color="var(--alert-fg)"; wd.style.fontSize="12px";
+      setTimeout(()=>{ if(wd.isConnected){delete wd.dataset.armed; wd.textContent="×"; wd.style.cssText=""} },3000); return }
+    state.works=state.works.filter(w=>w._id!==id); state.s4.forEach(r=>{ if(r.wid===id) r.wid="" }); persist(); renderTabs(); renderMain(); return }
+  if(e.target.closest("#bActs")){
+    const works=actPayload();
+    if(!works.length){ toast("Отметьте «Акт» у работ, по которым нужен акт"); return }
+    window.parent.postMessage({tool:"journal",type:"pto-make-acts",works},"*"); return }
   const g=e.target.closest("[data-goto]");
   if(g){ g.dataset.goto==="s4"?goTo("s4",r=>r._id===g.dataset.id):goTo("s3",a=>normNo(a.no)===g.dataset.no); return }
   const sec=SECTIONS.find(s=>s.id===current); if(!sec) return;
@@ -539,6 +775,23 @@ function printTable(def0,rows,getter,minRows){
     Array.from({length:pad},()=>`<tr><td style="height:22px"></td>${def.cols.map(()=>"<td></td>").join("")}</tr>`).join("")+
     `</tbody></table></div>`;
 }
+// значение ячейки для печати; в разделе 4 «Место» = этаж + оси, отметки
+function cellPrint(c,r){
+  if(c[0]==="place"&&r.floor!==undefined){ const f=String(r.floor||"").trim(); return [f?(/этаж/i.test(f)?f:f+" этаж"):"",r.place||""].filter(Boolean).join(", ") }
+  const v=c[3]==="calc"?c[4](r):(r[c[0]]??""); return c[0]==="vol"||c[0]==="temp"?fmtNum(v):v;
+}
+// раздел 4 за период — чтобы переписать в бумажный журнал
+function printPeriod(from,to){
+  const sec=SECTIONS.find(s=>s.id==="s4");
+  const rows=state.s4.filter(r=>!r._ex&&r.date&&(!from||r.date>=from)&&(!to||r.date<=to));
+  if(!rows.length){ toast("За этот период записей нет"); return }
+  const t={...sec,title:sec.title+` — с ${fmtDate(from)||"начала"} по ${fmtDate(to)||"сегодня"}`};
+  document.getElementById("printArea").innerHTML=printTable(t,rows,cellPrint,0).replace('class="p-sec"','class="p-sec" style="page-break-before:auto"');
+  printing=true;
+  try{ window.print() }catch(e){ toast("Печать недоступна в этом окне — откройте файл в браузере") }
+  setTimeout(()=>{ printing=false },1000);
+}
+let printing=false;
 function buildDoc(){
   const T=state.title;
   let h=`<div class="p-titul"><h1>ЖУРНАЛ<br>ПРОИЗВОДСТВА РАБОТ</h1><div class="no">№ ${esc(T.num)||"____"}</div><table>`+
@@ -546,7 +799,7 @@ function buildDoc(){
     `</table><p class="sign">Руководитель подрядной организации ____________________ / ____________________ /<br><br>М.П.</p></div>`;
   SECTIONS.forEach(sec=>{
     const rows=state[sec.id].filter(r=>!r._ex);
-    h+=printTable(sec,rows,(c,r)=>{ const v=c[3]==="calc"?c[4](r):(r[c[0]]??""); return c[0]==="vol"||c[0]==="temp"?fmtNum(v):v },sec.id==="s4"?15:8);
+    h+=printTable(sec,rows,cellPrint,sec.id==="s4"?15:8);
   });
   JOURNALS.forEach(j=>{
     const rows=jrows(j).filter(r=>!r._ex);
@@ -564,7 +817,7 @@ document.getElementById("bPrint").onclick=()=>{
   document.getElementById("printArea").innerHTML=buildDoc();
   try{ window.print() }catch(e){ toast("Печать недоступна в этом окне — откройте файл в браузере") }
 };
-window.addEventListener("beforeprint",()=>{ document.getElementById("printArea").innerHTML=buildDoc() });
+window.addEventListener("beforeprint",()=>{ if(!printing) document.getElementById("printArea").innerHTML=buildDoc() });
 
 document.getElementById("bWord").onclick=()=>{
   const css=`body{font-family:"Times New Roman";font-size:11pt}
