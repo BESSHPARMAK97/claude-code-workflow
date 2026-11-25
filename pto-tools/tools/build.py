@@ -56,6 +56,19 @@ def main():
     for name in ("реестр_работ.xlsx",):
         (DIST / name).write_bytes((ROOT / "aosr" / name).read_bytes())
     (DIST / "план_факт.xlsx").write_bytes((ROOT / "forms_2_3" / "план_факт.xlsx").read_bytes())
+
+    # ПТО-пульт: готовые инструменты во вкладках; журнал — из templates/ этого репозитория, если он есть
+    apps = {"aosr": aosr, "forms": forms}
+    journal = ROOT.parent / "templates" / "zhurnal-proizvodstva-rabot" / "zhurnal-proizvodstva-rabot.html"
+    if journal.exists():
+        apps["journal"] = journal.read_text(encoding="utf-8")
+    else:
+        print("  ! журнал производства работ не найден — вкладки «Журнал работ» в пульте не будет")
+    data = "window.PULT_APPS={" + ",".join(
+        f'"{k}":"{base64.b64encode(v.encode("utf-8")).decode()}"' for k, v in apps.items()) + "};"
+    pult = fill(ROOT / "pult" / "shell.html", [("/*DATA*/", data), ("/*APP*/", js(ROOT / "pult" / "app.js"))])
+    (DIST / "ПТО_пульт.html").write_text(pult, encoding="utf-8")
+
     for f in sorted(DIST.iterdir()):
         print(f"{f.stat().st_size // 1024:>7} КБ  dist/{f.name}")
 

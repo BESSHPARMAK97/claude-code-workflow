@@ -676,12 +676,19 @@
     });
   }
 
-  function process(file) {
+  function tellPult(msg) { if (window.parent !== window) window.parent.postMessage(Object.assign({ tool: "aosr" }, msg), "*"); }
+  var JR_KEY = "zpr-journal-v2";   // ключ хранения журнала производства работ (templates/zhurnal-proizvodstva-rabot)
+
+  function process(file, opts) {
+    opts = opts || {};
     var reader = new FileReader();
     reader.onload = function () {
-      $("extra").hidden = true; last = null;
+      var handled = false;
       try {
         var wb = XLSX.read(new Uint8Array(reader.result), { type: "array" });
+        if (opts.pult && !wb.Sheets["Работы"]) { tellPult({ type: "pto-ignored" }); return; }
+        tellPult({ type: "pto-handled" }); handled = true;
+        $("extra").hidden = true; last = null;
         var data = load(wb);
         var stats = prepare(data);
         var check = validate(data);
@@ -704,6 +711,7 @@
         download(last.kit, "Комплект_АОСР.docx", DOCX);
         $("extra").hidden = false;
       } catch (e) {
+        if (opts.pult && !handled) { tellPult({ type: "pto-ignored" }); return; }
         var msg = e && e.properties && e.properties.errors
           ? e.properties.errors.map(function (x) { return x.properties.explanation; }).join("; ")
           : (e && e.message) || String(e);
@@ -722,6 +730,33 @@
     $("dl-kit").addEventListener("click", function () { if (last) download(last.kit, "Комплект_АОСР.docx", DOCX); });
     $("dl-reg").addEventListener("click", function () { if (last) download(last.reg, "Реестр_ИД.xlsx", XLSXT); });
     $("dl-rep").addEventListener("click", function () { if (last) download(new TextEncoder().encode(last.report), "Отчёт_проверки.txt", "text/plain;charset=utf-8"); });
+    // в пульте: дописать данные реестра прямо в журнал на соседней вкладке (без .json)
+    if (window.parent !== window) $("jr-push").hidden = false;
+    $("jr-push").addEventListener("click", function () {
+      if (!last) return;
+      var old = null;
+      try { old = JSON.parse(localStorage.getItem(JR_KEY)); } catch (e) {}
+      var out, issues = [];
+      if (old && old.title) {
+        var m = mergeJournal(old, last.jr.state);
+        issues = crossCheck(old, last.data, last.check).concat(m.notes);
+        try { localStorage.setItem(JR_KEY, JSON.stringify(m.state)); } catch (e) { showReport(last.lines.concat(["", "  ✗ Не удалось записать журнал в браузер"]), "bad"); return; }
+        out = ["", "Журнал дополнен: ИТР +" + m.add.s1 + ", акты +" + m.add.s3 + ", записи о работах +" + m.add.s4 +
+          ", поля титула +" + m.add.title + ". Существующие записи не изменены."];
+      } else {
+        try { localStorage.setItem(JR_KEY, JSON.stringify(last.jr.state)); } catch (e) { showReport(last.lines.concat(["", "  ✗ Не удалось записать журнал в браузер"]), "bad"); return; }
+        out = ["", "Журнал создан из реестра: ИТР — " + last.jr.state.s1.length + ", актов — " + last.jr.state.s3.length +
+          ", записей о работах — " + last.jr.state.s4.length + "."];
+      }
+      if (issues.length) out = out.concat(["", "Сверка журнала с реестром:"], issues.map(function (x) { return "  ! " + x; }));
+      else if (old && old.title) out.push("Сверка журнала с реестром: расхождений нет.");
+      out.push("Откройте вкладку «Журнал работ».");
+      showReport(last.lines.concat(out), issues.length ? "mixed" : "ok");
+      tellPult({ type: "pto-journal-updated" });
+    });
+    window.addEventListener("message", function (e) {
+      if (e.data && e.data.type === "pto-file") process(new File([e.data.buf], e.data.name), { pult: true });
+    });
     $("dl-vhk").addEventListener("click", function () {
       if (!last) return;
       download(last.vhk.bytes, "Журнал_входного_контроля.docx", DOCX);

@@ -307,12 +307,18 @@
     });
   }
 
-  function process(file) {
-    $("extra").hidden = true; last = null;
+  // внутри «ПТО-пульта»: ответить пульту, взяли ли файл
+  function tellPult(msg) { if (window.parent !== window) window.parent.postMessage(Object.assign({ tool: "forms" }, msg), "*"); }
+
+  function process(file, opts) {
+    opts = opts || {};
     var reader = new FileReader();
     reader.onload = function () {
       var wb = new ExcelJS.Workbook();
       wb.xlsx.load(reader.result).then(function () {
+        if (opts.pult && !(wb.getWorksheet("Смета") && wb.getWorksheet("Выполнение"))) { tellPult({ type: "pto-ignored" }); return; }
+        $("extra").hidden = true; last = null;
+        tellPult({ type: "pto-handled" });
         var data = load(wb), chk = validate(data);
         var now = new Date();
         var lines = ["Проверка " + file.name + " — " + pad(now.getDate()) + "." + pad(now.getMonth() + 1) + "." + now.getFullYear() +
@@ -341,6 +347,7 @@
           $("extra").hidden = false;
         });
       }).catch(function (e) {
+        if (opts.pult) { tellPult({ type: "pto-ignored" }); return; }
         showReport(["Не удалось обработать файл: " + ((e && e.message) || e)], "bad");
       });
     };
@@ -362,5 +369,8 @@
     $("dl-again").addEventListener("click", function () { if (last) download(last.bytes, last.name, XLSXT); });
     $("dl-rep").addEventListener("click", function () { if (last) download(new TextEncoder().encode(last.report), "Отчёт_проверки.txt", "text/plain;charset=utf-8"); });
     $("sample").addEventListener("click", function () { download(b64ToBytes(window.KS_SAMPLE_B64), "план_факт.xlsx", XLSXT); });
+    window.addEventListener("message", function (e) {
+      if (e.data && e.data.type === "pto-file") process(new File([e.data.buf], e.data.name), { pult: true });
+    });
   });
 })();
