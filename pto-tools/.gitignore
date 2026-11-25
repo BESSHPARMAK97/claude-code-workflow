@@ -1,0 +1,6 @@
+node_modules/
+build/
+video/work/
+m29/М-29_*/
+__pycache__/
+*.pyc
