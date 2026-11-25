@@ -30,7 +30,7 @@
   var MAT_SPEC = [
     ["code", /^код/i], ["name", /^наименование/i], ["unit", /^ед/i], ["qty", /^количеств/i],
     ["recv", /^дата поступл/i], ["invoice", /^№ наклад/i], ["doc_type", /^вид/i], ["doc_no", /^№/],
-    ["date", /^дата/i], ["until", /^действ/i], ["supplier", /^поставщик/i], ["batch", /^парти/i]
+    ["date", /^дата/i], ["until", /^действ/i], ["supplier", /^поставщик/i], ["batch", /^парти/i], ["control", /^входн/i]
   ];
   var REQUIRED = { number: "№ акта", title: "Наименование работ", drawings: "Чертежи", next_works: "Последующие работы" };
   var BLANK_DATE = "«___» ___________ 20___ г.";   // пустая дата — заполняется от руки
@@ -105,6 +105,7 @@
       if (!clean(m.code)) return;
       materials[clean(m.code)] = { name: clean(m.name), doc_type: clean(m.doc_type), doc_no: clean(m.doc_no), date: toDate(m.date),
         supplier: clean(m.supplier), until: toDate(m.until), untilRaw: m.until, recv: toDate(m.recv), invoice: clean(m.invoice),
+        qty: m.qty, unit: clean(m.unit), control: clean(m.control),
         batch: clean(m.batch) || [clean(m.qty).replace(".", ","), clean(m.unit)].filter(Boolean).join(" ") };
     });
 
@@ -506,6 +507,157 @@
     setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
   }
 
+  // ---------- журналы: входной контроль (Word) и выгрузка в журнал производства работ (.json)
+  function iso(d) { return d ? d.y + "-" + pad(d.m) + "-" + pad(d.d) : ""; }
+  function isoKey(s) { var d = toDate(s); return d ? key(d) : 0; }
+
+  // «Прораб ТОО «ОтделкаСтрой», аттестат № 1: Ким В.С.» -> {fio, pos, org, att}
+  function parseRep(rep) {
+    var v = clean(rep), i = v.lastIndexOf(":"), head = i >= 0 ? v.slice(0, i) : "", fio = (i >= 0 ? v.slice(i + 1) : v).trim();
+    var att = (head.match(/,?\s*(аттестат[^,]*)/i) || [])[1] || "";
+    head = head.replace(/,?\s*аттестат[^,]*/i, "").trim();
+    var m = head.match(/(ТОО|ИП|АО|ООО|ГКП|РГП|КГП|ПК)\s*[«"]/);
+    var pos = m ? head.slice(0, m.index).trim() : head, org = m ? head.slice(m.index).trim() : "";
+    return { fio: fio, pos: pos, org: org, att: att };
+  }
+
+  // спецжурнал по описанию работ — те же правила, что в самом журнале
+  function guessJr(text) {
+    var t = String(text || "").toLowerCase();
+    if (/антикорроз|огрунтов|грунтовк|грунтован|защитн\S* покрыт|окраск\S* (металл|конструкц)|лакокрас/.test(t)) return "Антикоррозионные работы";
+    if (/свар|прихват|наплавк/.test(t)) return "Сварочные работы";
+    if (/бетонир|укладк\S* бетон|бетонн\S* смес|подлив\S* бетон/.test(t)) return "Бетонные работы";
+    return "";
+  }
+  var TITLE_KEYS = ["num", "object", "address", "customer", "contractor", "subcontractors", "designer", "project", "expertise",
+    "notice", "technadzor", "avtornadzor", "start", "finish", "responsible", "sheets"];
+
+  function repsOf(data, w) {
+    var own = function (v) { return isNone(v) ? "" : clean(v); };
+    return {
+      c: data.rowReps ? own(w.row_contractor_rep) : data.obj.contractor_rep || "",
+      t: data.rowReps ? own(w.row_tech_rep) : data.obj.tech_rep || "",
+      a: data.rowReps ? own(w.row_author_rep) : pickRep(w.row_author_rep, data.obj.author_rep),
+      s: isNone(w.sub_rep) ? "" : clean(w.sub_rep)
+    };
+  }
+  function uniq(list) { var o = []; list.forEach(function (x) { if (x && o.indexOf(x) < 0) o.push(x); }); return o; }
+
+  // данные для журнала из реестра (акты с ошибками не попадают)
+  function journalFromRegistry(data, check) {
+    var st = { title: {}, meta: { created: new Date().toISOString(), v: 4, source: "Генератор АОСР" }, bj: {}, uh: {}, sv: {}, ak: {},
+      s1: [], s2: [], s3: [], s4: [], s5: [] };
+    TITLE_KEYS.forEach(function (k) { st.title[k] = ""; });
+    var ok = data.works.filter(function (w) { return !check.errors[w.id]; });
+    var reps = ok.map(function (w) { return repsOf(data, w); });
+    st.title.object = clean(data.obj.object);
+    st.title.contractor = clean(data.obj.contractor);
+    st.title.designer = clean(data.obj.designer);
+    st.title.technadzor = uniq(reps.map(function (r) { return r.t; })).join("; ");
+    st.title.avtornadzor = uniq(reps.map(function (r) { return r.a; })).join("; ");
+    st.title.subcontractors = uniq(reps.map(function (r) { return parseRep(r.s).org; })).join("; ");
+    // раздел 1 — ИТР подрядчика и субподрядчиков (надзор — в титуле, не в ИТР)
+    var seen = {};
+    ok.forEach(function (w, i) {
+      [reps[i].c, reps[i].s].forEach(function (rep) {
+        if (!rep) return;
+        var p = parseRep(rep), k = norm(p.fio), s = toDate(w.start);
+        if (!seen[k]) { seen[k] = { fio: p.fio, pos: p.pos, org: p.org || clean(w.performer) || clean(data.obj.contractor), area: "", d1: "", d2: "", att: p.att }; st.s1.push(seen[k]); }
+        if (s && (!seen[k].d1 || iso(s) < seen[k].d1)) seen[k].d1 = iso(s);
+      });
+    });
+    // раздел 3 — перечень актов
+    ok.forEach(function (w, i) {
+      if (!clean(w.number) || isBN(w.number)) return;
+      var r = reps[i];
+      st.s3.push({ no: clean(w.number), name: (clean(w.title) + " " + clean(w.location)).trim() + (clean(w.place) ? " (" + clean(w.place) + ")" : ""),
+        date: iso(toDate(w.date)), who: [shortName(r.c) && shortName(r.c) + " (СМО)", shortName(r.t) && shortName(r.t) + " (ТН)",
+          shortName(r.a) && shortName(r.a) + " (АН)"].filter(Boolean).join(", "), note: "" });
+    });
+    // раздел 4 — работы с датами (одна запись на дату начала; период — в тексте)
+    var noDate = 0;
+    ok.forEach(function (w, i) {
+      var s = toDate(w.start) || toDate(w.end), e = toDate(w.end);
+      if (!s) { noDate++; return; }
+      var work = clean(w.title) + (e && key(e) !== key(s) ? " (работы с " + fmtShort(s) + " по " + fmtShort(e) + ")" : "");
+      st.s4.push({ date: iso(s), shift: "", jr: guessJr(w.title), work: work, place: [clean(w.place), clean(w.location)].filter(Boolean).join(", "),
+        unit: "", vol: "", temp: "", weather: "", exec: clean(w.performer) || clean(data.obj.contractor), resp: shortName(reps[i].c) });
+    });
+    st.s4.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    return { state: st, noDate: noDate };
+  }
+
+  // дополнить существующий журнал: только недостающее, ничего не перезаписывать
+  function mergeJournal(old, fresh) {
+    var st = JSON.parse(JSON.stringify(old)), add = { s1: 0, s3: 0, s4: 0, title: 0 }, notes = [];
+    st.title = st.title || {};
+    TITLE_KEYS.forEach(function (k) { if (!clean(st.title[k]) && clean(fresh.title[k])) { st.title[k] = fresh.title[k]; add.title++; } });
+    ["s1", "s2", "s3", "s4", "s5"].forEach(function (k) { if (!Array.isArray(st[k])) st[k] = []; });
+    fresh.s1.forEach(function (p) {
+      if (!st.s1.some(function (x) { return norm(x.fio) === norm(p.fio); })) { st.s1.push(p); add.s1++; }
+    });
+    fresh.s3.forEach(function (a) {
+      var ex = st.s3.filter(function (x) { return norm(x.no) === norm(a.no); })[0];
+      if (!ex) { st.s3.push(a); add.s3++; return; }
+      if (!ex.date && a.date) ex.date = a.date;
+      else if (ex.date && a.date && ex.date !== a.date)
+        notes.push("акт № " + a.no + ": в журнале дата " + fmtShort(toDate(ex.date)) + ", в реестре " + fmtShort(toDate(a.date)));
+    });
+    var k4 = function (r) { return r.date + "|" + norm(String(r.work).replace(/\s*\(работы с .*\)$/, "")) + "|" + norm(r.place); };
+    var have = {}; st.s4.forEach(function (r) { have[k4(r)] = 1; });
+    fresh.s4.forEach(function (r) { if (!have[k4(r)]) { st.s4.push(r); add.s4++; } });
+    st.s4.sort(function (a, b) { return a.date < b.date ? -1 : a.date > b.date ? 1 : 0; });
+    st.meta = st.meta || {}; st.meta.updatedFromRegistry = new Date().toISOString();
+    return { state: st, add: add, notes: notes };
+  }
+
+  // сверка: за период работ по акту в журнале должны быть записи
+  function crossCheck(old, data, check) {
+    var lines = [], recs = (old.s4 || []).map(function (r) { return isoKey(r.date); }).filter(Boolean);
+    data.works.forEach(function (w) {
+      if (check.errors[w.id] || !clean(w.number) || isBN(w.number)) return;
+      var s = toDate(w.start), e = toDate(w.end) || s;
+      if (!s) return;
+      var has = recs.some(function (k) { return k >= key(s) && k <= key(e); });
+      if (!has) lines.push("акт № " + clean(w.number) + ": в журнале нет записей за период работ " + fmtShort(s) + (e && key(e) !== key(s) ? "–" + fmtShort(e) : ""));
+    });
+    var regNos = {}; data.works.forEach(function (w) { if (clean(w.number)) regNos[norm(w.number)] = 1; });
+    (old.s3 || []).forEach(function (a) { if (a.no && !regNos[norm(a.no)]) lines.push("акт № " + a.no + " есть в журнале, но нет в реестре"); });
+    return lines;
+  }
+
+  // журнал входного контроля — Word, альбомный лист
+  function vhkDocx(data, tplBytes) {
+    var list = Object.keys(data.materials).map(function (k) { return Object.assign({ code: k }, data.materials[k]); });
+    list.sort(function (a, b) { return (a.recv ? key(a.recv) : 0) - (b.recv ? key(b.recv) : 0) || (a.code < b.code ? -1 : 1); });
+    var warns = [];
+    list.forEach(function (m) {
+      if (!m.recv) warns.push(m.code + ": нет даты поступления");
+      if (!m.invoice) warns.push(m.code + ": нет № накладной");
+      if (m.until && m.recv && key(m.until) < key(m.recv)) warns.push(m.code + ": документ о качестве истёк " + fmtShort(m.until) + " — до поступления " + fmtShort(m.recv));
+      if (!clean(m.control)) warns.push(m.code + ": не заполнен результат входного контроля");
+    });
+    var body = xp("ЖУРНАЛ", { bold: true, sz: 28, after: 0 }) +
+      xp("входного контроля материалов, изделий и конструкций", { bold: true, sz: 24, after: 120 }) +
+      xp("Объект: " + clean(data.obj.object), { after: 40 }) +
+      xp("Строительно-монтажная организация: " + clean(data.obj.contractor), { after: 160 }) +
+      xtable([500, 1400, 3400, 650, 900, 2400, 3150, 1350, 1150],
+        ["№ п/п", "Дата поступления", "Наименование материала, изделия, конструкции", "Ед. изм.", "Кол-во",
+          "Поставщик, № накладной", "Документ о качестве (вид, №, дата, срок действия)", "Результат входного контроля", "Подпись"],
+        list.map(function (m, i) {
+          return [String(i + 1), m.recv ? fmtShort(m.recv) : "", m.name + " [" + m.code + "]", m.unit || "", m.qty === null || m.qty === undefined ? "" : String(m.qty).replace(".", ","),
+            [m.supplier, m.invoice && "накл. № " + m.invoice].filter(Boolean).join(", "),
+            [m.doc_type, m.doc_no && "№ " + m.doc_no, m.date && "от " + fmtShort(m.date), m.until && "действует до " + fmtShort(m.until)].filter(Boolean).join(" "),
+            clean(m.control), ""];
+        }), [0, 1, 3, 4]);
+    var z = new PizZip(tplBytes), x = z.file("word/document.xml").asText();
+    var start = x.indexOf(">", x.indexOf("<w:body")) + 1, end = x.lastIndexOf("</w:body>");
+    var sect = '<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/>' +
+      '<w:pgMar w:top="850" w:right="850" w:bottom="850" w:left="1134" w:header="0" w:footer="0" w:gutter="0"/></w:sectPr>';
+    z.file("word/document.xml", x.slice(0, start) + body + sect + x.slice(end));
+    return { bytes: z.generate({ type: "uint8array", compression: "DEFLATE" }), count: list.length, warns: warns };
+  }
+
   var customTemplate = null, last = null;
   var DOCX = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
   var XLSXT = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
@@ -543,10 +695,11 @@
         var hasErr = lines.some(function (l) { return /✗/.test(l); });
         showReport(lines, !acts.length ? "bad" : hasErr ? "mixed" : "ok");
         if (!acts.length) return;
+        var vhk = vhkDocx(data, tpl), jr = journalFromRegistry(data, check);
         last = {
           kit: buildKit(data.obj, acts), acts: acts,
           reg: registerXlsx(data.obj, acts), report: "﻿" + lines.join("\r\n"),
-          filled: filledRegistry(wb, data)
+          filled: filledRegistry(wb, data), vhk: vhk, jr: jr, data: data, check: check, lines: lines
         };
         download(last.kit, "Комплект_АОСР.docx", DOCX);
         $("extra").hidden = false;
@@ -569,6 +722,39 @@
     $("dl-kit").addEventListener("click", function () { if (last) download(last.kit, "Комплект_АОСР.docx", DOCX); });
     $("dl-reg").addEventListener("click", function () { if (last) download(last.reg, "Реестр_ИД.xlsx", XLSXT); });
     $("dl-rep").addEventListener("click", function () { if (last) download(new TextEncoder().encode(last.report), "Отчёт_проверки.txt", "text/plain;charset=utf-8"); });
+    $("dl-vhk").addEventListener("click", function () {
+      if (!last) return;
+      download(last.vhk.bytes, "Журнал_входного_контроля.docx", DOCX);
+      showReport(last.lines.concat(["", "Журнал входного контроля: " + last.vhk.count + " партий"],
+        last.vhk.warns.map(function (w) { return "  ! " + w; })), last.vhk.warns.length ? "mixed" : "ok");
+    });
+    $("dl-jr").addEventListener("click", function () {
+      if (!last) return;
+      var st = last.jr.state;
+      download(new TextEncoder().encode(JSON.stringify(st, null, 1)), "журнал_работ_из_реестра.json", "application/json");
+      showReport(last.lines.concat(["", "Для журнала производства работ: ИТР — " + st.s1.length + ", актов — " + st.s3.length +
+        ", записей о работах — " + st.s4.length + (last.jr.noDate ? " (без дат пропущено: " + last.jr.noDate + ")" : ""),
+        "Откройте файл в журнале кнопкой «Открыть файл»."]), "ok");
+    });
+    $("jr-upd").addEventListener("change", function () {
+      var f = $("jr-upd").files[0]; $("jr-upd").value = "";
+      if (!f || !last) return;
+      var r = new FileReader();
+      r.onload = function () {
+        var old;
+        try { old = JSON.parse(r.result); if (!old || !old.title) throw 0; }
+        catch (e) { showReport(last.lines.concat(["", "  ✗ " + f.name + " — не файл журнала производства работ (.json)"]), "bad"); return; }
+        var cc = crossCheck(old, last.data, last.check), m = mergeJournal(old, last.jr.state);
+        download(new TextEncoder().encode(JSON.stringify(m.state, null, 1)), f.name.replace(/\.json$/i, "") + "_обновлён.json", "application/json");
+        var out = last.lines.concat(["", "Журнал «" + f.name + "» дополнен: ИТР +" + m.add.s1 + ", акты +" + m.add.s3 +
+          ", записи о работах +" + m.add.s4 + ", поля титула +" + m.add.title + ". Существующие записи не изменены."]);
+        var issues = cc.concat(m.notes);
+        if (issues.length) out = out.concat(["", "Сверка журнала с реестром:"], issues.map(function (x) { return "  ! " + x; }));
+        else out.push("Сверка журнала с реестром: расхождений нет.");
+        showReport(out, issues.length ? "mixed" : "ok");
+      };
+      r.readAsText(f);
+    });
     $("dl-filled").addEventListener("click", function () { if (last) download(last.filled, "реестр_работ_заполненный.xlsx", XLSXT); });
     $("dl-acts").addEventListener("click", function () {
       if (!last) return;
