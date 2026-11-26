@@ -41,6 +41,7 @@ def main():
         ("/*LIB_XLSX*/", js(NM / "xlsx" / "dist" / "xlsx.core.min.js")),
         ("/*LIB_DT*/", js(BUILD / "dt.bundle.js")),
         ("/*DATA*/", f'window.AOSR_TEMPLATE_B64="{b64(ROOT / "aosr" / "template.docx")}";'
+                     f'window.AOSR_TEMPLATE_PPK_B64="{b64(ROOT / "aosr" / "template_ppk.docx")}";'
                      f'window.AOSR_REGISTRY_B64="{b64(ROOT / "aosr" / "реестр_работ.xlsx")}";'),
         ("/*APP*/", js(ROOT / "aosr" / "app.js")),
     ])

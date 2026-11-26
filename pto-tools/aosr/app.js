@@ -13,7 +13,7 @@
 
   // Колонки ищутся по названию — порядок в Excel может быть любым, старые реестры тоже читаются
   var WORK_SPEC = [
-    ["generate", /^с?формировать/i], ["tpl", /^типов/i], ["number", /^№/], ["date", /^дата акта/i],
+    ["generate", /^с?формировать/i], ["kind", /^вид акта/i], ["tpl", /^типов/i], ["number", /^№/], ["date", /^дата акта/i],
     ["place", /^участок/i], ["start", /^начало/i], ["end", /^окончани/i], ["location", /^место/i],
     ["title", /^наименование/i], ["drawings", /^черт/i], ["materials", /^материал/i], ["evidence", /^доп/i],
     ["deviations", /^отклонен/i], ["next_works", /^последующ/i], ["performer", /^(исполнитель|организация смо)/i],
@@ -363,6 +363,8 @@
     return head + tbl + sign;
   }
 
+  // вид акта: скрытые работы (Приложение Д) или промежуточная приёмка ответственных конструкций (Приложение Е)
+  function isPPK(w) { return /промеж|ппк|ответствен/i.test(clean(w.kind)); }
   function render(data, check, templateBytes) {
     var obj = data.obj, over = parseInt(obj.appendix_over, 10);
     if (isNaN(over)) over = 4;
@@ -377,7 +379,7 @@
       var d = toDate(w.date), s = toDate(w.start), e = toDate(w.end);
       var matList = matsOf(data, w);
       var mats = matList.map(function (m) { return m.name + ", " + m.doc_type + " № " + m.doc_no + " от " + fmtShort(m.date); });
-      var toAppendix = over > 0 && matList.length > over;
+      var ppk = isPPK(w), toAppendix = !ppk && over > 0 && matList.length > over;
       var title = clean(w.title), loc = clean(w.location), sub = clean(w.sub_rep);
       // есть колонки представителей — в акте ровно то, что в строке; нет колонок (старый реестр) — с листа «Объект»
       var own = function (v) { return isNone(v) ? "" : clean(v); };
@@ -387,7 +389,7 @@
       var ctx = Object.assign({}, base, {
         contractor_rep: cRep, contractor_sign: shortName(cRep), tech_rep: tRep, tech_sign: shortName(tRep),
         author_rep: aRep, author_sign: shortName(aRep),
-        number: clean(w.number), place: clean(w.place), works: (title + " " + loc).trim(),
+        number: clean(w.number), place: clean(w.place), works: (title + (/^[,;(]/.test(loc) ? "" : " ") + loc).trim(),
         design_docs: [obj.designer, clean(w.drawings)].filter(Boolean).join(", "),
         materials_text: toAppendix ? "согласно приложению к настоящему акту (" + matList.length + " поз.)" : (mats.join("; ") || "не применялись"),
         evidence: clean(w.evidence) || "не приложены", deviations: clean(w.deviations) || "отсутствуют",
@@ -395,7 +397,7 @@
         next_works: clean(w.next_works), performer: clean(w.performer) || obj.contractor,
         sub_rep: isNone(sub) ? "" : sub, sub_sign: isNone(sub) ? "" : shortName(sub)
       });
-      var doc = new Docxtemplater(new PizZip(templateBytes), { paragraphLoop: true, linebreaks: true, nullGetter: function () { return ""; } });
+      var doc = new Docxtemplater(new PizZip(ppk ? b64ToBytes(window.AOSR_TEMPLATE_PPK_B64) : templateBytes), { paragraphLoop: true, linebreaks: true, nullGetter: function () { return ""; } });
       doc.render(ctx);
       var z = doc.getZip();
       if (toAppendix) {
@@ -403,7 +405,7 @@
         z.file("word/document.xml", x.slice(0, cut) + appendixXml(ctx, matList) + x.slice(cut));
       }
       out.push({
-        name: "АОСР_" + safeName(ctx.number) + "_" + safeName(title) + ".docx",
+        name: (ppk ? "АППК_" : "АОСР_") + safeName(ctx.number) + "_" + safeName(title) + ".docx", ppk: ppk,
         bytes: z.generate({ type: "uint8array", compression: "DEFLATE" }),
         zip: z, number: ctx.number, title: title, works: ctx.works, place: ctx.place, date: d ? fmtShort(d) : "", appendix: toAppendix
       });
@@ -421,6 +423,11 @@
       return p + (ppr || "") + '<w:r><w:br w:type="page"/></w:r>';
     });
   }
+  function kitCount(acts) {
+    var k = acts.filter(function (a) { return a.ppk; }).length;
+    return k ? "Актов в комплекте: " + acts.length + " (освидетельствования скрытых работ — " + (acts.length - k) + ", промежуточной приёмки ответственных конструкций — " + k + ")"
+      : "Актов освидетельствования скрытых работ в комплекте: " + acts.length;
+  }
   function buildKit(obj, acts) {
     var base = acts[0].zip;
     var docXml = base.file("word/document.xml").asText();
@@ -428,7 +435,7 @@
     var sect = docXml.lastIndexOf("<w:sectPr");
     var front = xp("Комплект исполнительной документации", { bold: true, sz: 26, after: 80 }) +
       xp(obj.object || "", { after: 40 }) +
-      xp("Актов освидетельствования скрытых работ в комплекте: " + acts.length, { after: 160 }) +
+      xp(kitCount(acts), { after: 160 }) +
       xtable([680, 1900, 1250, 4400, 1900], ["№ п/п", "№ акта", "Дата", "Наименование работ", "Участок"],
         acts.map(function (a, i) { return [String(i + 1), a.number, a.date, a.works, a.place || ""]; }), [0, 2]);
     var bodies = acts.map(function (a) { return withPageBreak(bodyOf(a.zip.file("word/document.xml").asText())); }).join("");
@@ -463,7 +470,7 @@
     var aoa = [["Реестр исполнительной документации — " + (obj.object || "")], [],
       ["№ п/п", "Наименование документа", "№ документа", "Дата", "Кол-во листов", "Примечание"]];
     acts.forEach(function (a, i) {
-      aoa.push([i + 1, "Акт освидетельствования скрытых работ: " + a.works, a.number, a.date, a.appendix ? 2 : 1, a.appendix ? "с приложением" : ""]);
+      aoa.push([i + 1, (a.ppk ? "Акт промежуточной приёмки ответственных конструкций: " : "Акт освидетельствования скрытых работ: ") + a.works, a.number, a.date, a.appendix ? 2 : 1, a.appendix ? "с приложением" : ""]);
     });
     var ws = XLSX.utils.aoa_to_sheet(aoa);
     ws["!cols"] = [{ wch: 7 }, { wch: 70 }, { wch: 16 }, { wch: 12 }, { wch: 10 }, { wch: 20 }];
@@ -495,6 +502,8 @@
     if (stats.autoNext) lines.push("«Последующие работы» взяты из следующего акта на участке: " + stats.autoNext);
     if (withApp) lines.push("Материалы вынесены в приложение: " + withApp + " акт(ов)");
     if (skipped) lines.push("Не формировались («Формировать» = нет): " + skipped);
+    var nP = acts.filter(function (a) { return a.ppk; }).length;
+    if (nP) lines.push("Из них актов промежуточной приёмки ответственных конструкций: " + nP);
     lines.push("Сформировано актов: " + acts.length, "Пропущено из-за ошибок: " + failed);
     return lines;
   }
@@ -724,7 +733,7 @@
     } catch (e) { return null; }
   }
   // акты по списку работ журнала: даты — из записей журнала, люди и материалы — из запомненного реестра
-  var JW_HEAD = ["Формировать", "Наименование работ", "Участок", "Место (оси, отметки)", "Чертежи", "Материалы (коды через ;)", "Представитель СМО",
+  var JW_HEAD = ["Формировать", "Вид акта", "Наименование работ", "Участок", "Место (оси, отметки)", "Чертежи", "Материалы (коды через ;)", "Представитель СМО",
     "Представитель технадзора", "№ акта", "Дата акта (пусто — от руки)", "Начало работ", "Окончание работ", "Доп. доказательства", "Отклонения",
     "Последующие работы", "Представитель авторского надзора", "Представитель субподрядчика"];
   function actsFromJournal(works) {
@@ -740,7 +749,7 @@
     list.forEach(function (w, i) {
       var fl = w.floors || [], floorTxt = fl.length ? (fl.length > 1 ? "этажи " : "этаж ") + fl.join(", ") : "";
       var next = clean(w.next) || (list[i + 1] ? lowerFirst(clean(list[i + 1].name)) : "");
-      aoa.push(["да", w.name, "", [floorTxt, clean(w.place)].filter(Boolean).join(", "), w.drawings, w.materials, w.cRep, w.tRep, w.no, w.actDate,
+      aoa.push(["да", w.kind === "ppk" ? "промежуточной приёмки" : "АОСР", w.name, "", ([floorTxt, clean(w.place)].filter(Boolean).join(", ").replace(/^(?=.)/, ", ")), w.drawings, w.materials, w.cRep, w.tRep, w.no, w.actDate,
         w.start, w.end, w.evidence, w.deviations, next, w.aRep || "нет", w.sRep || "нет"]);
     });
     wb.Sheets["Работы"] = XLSX.utils.aoa_to_sheet(aoa);

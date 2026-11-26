@@ -89,17 +89,20 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
 
   // ---------- работы и акты
   await j.click('nav.tabs [data-tab="wk"]'); await p.waitForTimeout(300);
-  for (const i of [0, 1]) { await (await j.$$('input[data-k="act"]'))[i].click(); await p.waitForTimeout(300); }
+  const sels = await j.$$eval('select[data-k="actsel"]', xs => xs.map(x => x.dataset.w));
+  await j.selectOption(`select[data-w="${sels[0]}"][data-k="actsel"]`, 'aosr'); await p.waitForTimeout(300);
+  await j.selectOption(`select[data-w="${sels[1]}"][data-k="actsel"]`, 'ppk'); await p.waitForTimeout(300);
   const ppl = await j.$$eval('#peopleList option', xs => xs.map(x => x.value));
   check(ppl.length === 6, 'в журнале — люди из реестра (для представителей в акте)');
-  const ids = await j.$$eval('input[data-k="act"]', xs => xs.map(x => x.dataset.w));
+  const ids = sels;
+  check(!(await j.$(`[data-w="${ids[1]}"][data-k="materials"]`)) && !!(await j.$(`[data-w="${ids[0]}"][data-k="materials"]`)), 'промежуточная приёмка: без материалов и доп. доказательств (их нет в форме)');
   for (const id of ids) {
     await j.click(`details[data-sid="w-${id}"] summary`);
     await j.fill(`[data-w="${id}"][data-k="drawings"]`, 'КЖ-1, листы 3–5');
-    await j.fill(`[data-w="${id}"][data-k="materials"]`, 'M01');
+    if (id === ids[0]) await j.fill(`[data-w="${id}"][data-k="materials"]`, 'M01');
     await j.fill(`[data-w="${id}"][data-k="cRep"]`, ppl[0]);
     await j.fill(`[data-w="${id}"][data-k="tRep"]`, ppl.find(x => /надзор/i.test(x)) || ppl[1]);
-    await j.fill(`[data-w="${id}"][data-k="evidence"]`, 'исполнительная схема');
+    if (id === ids[0]) await j.fill(`[data-w="${id}"][data-k="evidence"]`, 'исполнительная схема');
   }
   await j.fill(`[data-w="${ids[0]}"][data-k="no"]`, 'АОСР-101'); await j.press(`[data-w="${ids[0]}"][data-k="no"]`, 'Tab'); await p.waitForTimeout(300);
   await j.fill(`[data-w="${ids[1]}"][data-k="no"]`, 'АОСР-102'); await j.press(`[data-w="${ids[1]}"][data-k="no"]`, 'Tab'); await p.waitForTimeout(300);
@@ -109,6 +112,7 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
   const arm = st.works.find(w => /^Армирование/.test(w.name));
   check(st.s3.some(x => x.no === 'АОСР-101' && /этажи 2, 3, 4/.test(x.name)) && st.s4.filter(r => r.wid === arm._id).every(r => r.aosr === 'АОСР-101'),
     'отметка «Акт»: акт в разделе 3 (с этажами), № акта — в записях');
+  check(st.s3.some(x => x.no === 'АОСР-102' && /промежуточная приёмка/.test(x.note)), 'раздел 3: акт промежуточной приёмки помечен в примечании');
   dl = p.waitForEvent('download', { timeout: 15000 }).catch(() => null);
   await j.click('#bActs'); d = await dl; await p.waitForTimeout(800);
   [a, j] = await frames(p);
@@ -117,6 +121,9 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
     '«Сформировать акты» в журнале → 2 акта по работам журнала');
   const kp = path.join(tmp, 'kit.docx'); if (d) await d.saveAs(kp);
   const xml = d ? new PizZip(fs.readFileSync(kp)).file('word/document.xml').asText().replace(/<[^>]+>/g, '') : '';
+  check(/промежуточной приёмки ответственных конструкций/.test(xml) && /Конструкции принимаются/.test(xml) && /Приложение Е/.test(xml) && /промежуточной приёмки ответственных конструкций — 1/.test(xml),
+    'комплект: акт промежуточной приёмки по форме (приложение Е) и счёт на титуле');
+  check(/Из них актов промежуточной приёмки ответственных конструкций: 1/.test(rep), 'отчёт: сколько актов промежуточной приёмки');
   check(xml.includes('АОСР-101') && /«10» марта 2026/.test(xml) && xml.includes(`«${ago(0).slice(8)}»`), 'в акте даты работ — из записей журнала (первая и последняя)');
 
   // ссылки акт ⇄ запись
@@ -137,7 +144,7 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
   [a, j] = await frames(p);
   await j.fill('#q-work', 'Монтаж закладных'); await j.click('#qAdd'); await p.waitForTimeout(300);
   await j.click('nav.tabs [data-tab="wk"]'); await p.waitForTimeout(300);
-  await (await j.$('input[data-k="act"]')).click(); await p.waitForTimeout(300);
+  await j.selectOption('select[data-k="actsel"]', 'aosr'); await p.waitForTimeout(300);
   await j.click('#bActs'); await p.waitForTimeout(800);
   [a] = await frames(p);
   check(/загрузите один раз реестр Excel объекта/.test(await a.textContent('#report')), 'без реестра: подсказка загрузить реестр один раз');
