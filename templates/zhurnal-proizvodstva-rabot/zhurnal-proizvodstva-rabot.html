@@ -92,6 +92,10 @@ table.ed tr.hl td{box-shadow:inset 0 0 0 9999px color-mix(in srgb,var(--accent) 
 .lag.bad{background:var(--alert);color:var(--alert-fg);border-color:transparent}
 .lag .day{display:inline-flex;gap:4px;align-items:center;margin:4px 10px 0 0;white-space:nowrap}
 .lag .day button{padding:2px 8px;font-size:12px}
+.lag.lab{background:var(--auto);color:var(--auto-fg);border-color:transparent}
+.subt.lab{color:var(--accent);margin-top:10px}
+table.ed th.lab{background:color-mix(in srgb,var(--accent-soft) 60%,var(--auto-head))}
+.labt{display:block;font-weight:400;font-size:10.5px;color:var(--accent);margin-top:2px}
 .tagA{display:inline-block;font-size:11.5px;color:var(--accent);margin:2px 0 0 8px}
 table.ed td.calc{color:var(--muted);font-size:12.5px;padding:8px}
 table.ed td.ck{text-align:center;padding-top:9px}
@@ -221,8 +225,8 @@ const JOURNALS=[
   cols:[["date","Дата бетонирования",8,"src"],["work","Бетонируемая конструкция",17,"src"],["place","Место (оси, отметки)",11,"src"],
         ["vol","Объём смеси, м³",6,"src"],["temp","t воздуха, °C",5,"src"],
         ["cls","Класс бетона, марки W и F",9],["slump","Подвижность (осадка конуса, см / П)",8],["supplier","Поставщик, № документа о качестве / накладной",13,"a"],
-        ["tmix","t смеси при укладке, °C",6,"n"],["compact","Способ уплотнения",10,"s",["",...COMPACT]],["samples","Образцы: серий, маркировка",9],
-        ["rproj","Проектная прочность, МПа",6,"n"],["r7","Прочность 7 сут, МПа",6,"n"],["r28","Прочность 28 сут, МПа",6,"n"],
+        ["tmix","t смеси при укладке, °C",6,"n"],["compact","Способ уплотнения",10,"s",["",...COMPACT]],["samples","Образцы: серий, маркировка",9,"",null,{lab:true}],
+        ["rproj","Проектная прочность, МПа",6,"n"],["r7","Прочность 7 сут, МПа",6,"n",null,{lab:true}],["r28","Прочность 28 сут, МПа",6,"n",null,{lab:true}],
         ["pct","% от проектной",6,"calc",r=>pct(r)],["strip","Дата распалубки",9,"d"],["resp","Ответственный",9,"src"]]},
  {id:"uh",kind:CONCRETE,short:"Уход за бетоном",title:"Журнал ухода за бетоном",
   hint:"Зелёные столбцы берутся из раздела 4. Продолжительность ухода считается по датам начала и окончания.",
@@ -230,7 +234,7 @@ const JOURNALS=[
         ["vol","Объём, м³",6,"src"],["temp","t воздуха при бетонировании, °C",7,"src"],
         ["care","Способ ухода / прогрева",13,"s",["",...CARE]],["c1","Начало ухода",9,"d"],["c2","Окончание ухода",9,"d"],
         ["days","Продолжи­тельность, сут",7,"calc",r=>days(r)],["tconc","t бетона при выдерживании: мин / макс, °C",9],
-        ["rend","Прочность к окончанию ухода, МПа (%)",9],["remarks","Замечания (трещины, пересушивание и т. п.)",14,"a"],["resp","Ответственный (Ф.И.О., подпись)",10]]},
+        ["rend","Прочность к окончанию ухода, МПа (%)",9,"",null,{lab:true}],["remarks","Замечания (трещины, пересушивание и т. п.)",14,"a"],["resp","Ответственный (Ф.И.О., подпись)",10]]},
  {id:"sv",kind:WELDING,short:"Сварочные работы",title:"Журнал сварочных работ",
   hint:"Зелёные столбцы берутся из записей раздела 4 с отметкой «Сварочные работы». Заполните сведения о материалах, сварщике и контроле.",
   cols:[["date","Дата сварки",8,"src"],["work","Конструкция, узел, соединение",17,"src"],["place","Место (оси, отметки)",10,"src"],
@@ -393,7 +397,7 @@ function renderMain(){
   }
   const sec=SECTIONS.find(s=>s.id===current), jr=JOURNALS.find(s=>s.id===current), def=sec||jr;
   const rows=sec?state[sec.id]:jrows(jr);
-  const head=`<tr><th style="text-align:center">№</th>${def.cols.map(c=>`<th class="${c[3]==="src"||c[3]==="calc"?"auto":""}" style="width:${c[2]}%">${esc(c[1])}</th>`).join("")}${sec?"<th></th>":""}</tr>`;
+  const head=`<tr><th style="text-align:center">№</th>${def.cols.map(c=>`<th class="${c[3]==="src"||c[3]==="calc"?"auto":""}${isLab(c)?" lab":""}" style="width:${c[2]}%">${esc(c[1])}${isLab(c)?'<span class="labt">лаборатория</span>':""}</th>`).join("")}${sec?"<th></th>":""}</tr>`;
   const body=rows.map((r,i)=>{
     const data=sec?r:r;
     return `<tr class="${r._ex?"example":""}"><td class="n">${i+1}</td>${def.cols.map(c=>{
@@ -421,6 +425,21 @@ function renderMain(){
   renderChecks();
   mainEl.querySelectorAll("td textarea").forEach(autosize);
 }
+/* ---------- графы лаборатории (образцы, прочность) и напоминание о сроках испытаний ---------- */
+const isLab=c=>!!(c[5]&&c[5].lab);
+function labDue(){   // бетонирования, по которым пора внести прочность 7 и 28 суток
+  const t=today(), out=[];
+  state.s4.filter(r=>r.jr===CONCRETE&&r.date&&!r._ex).forEach(r=>{ const o=state.bj[r._id]||{};
+    [[7,"r7"],[28,"r28"]].forEach(([n,k])=>{ const d=addDays(r.date,n); if(!String(o[k]??"").trim()&&d<=t) out.push({r,n,d}) }) });
+  return out;
+}
+function labHtml(){
+  const due=labDue(); if(!due.length) return "";
+  return `<div class="lag lab"><strong>Ждут результатов лаборатории:</strong> `+due.slice(0,6).map(x=>
+    `<span class="day">${esc(x.r.work)}${x.r.floor?", "+esc(x.r.floor)+" этаж":""} — ${x.n} сут (с ${fmtDate(x.d)})</span>`).join("")+
+    (due.length>6?` <span class="day">…и ещё ${due.length-6}</span>`:"")+` <span class="day">Внесите по протоколам: вкладка «Бетонные работы» или «Подробнее» у записи.</span></div>`;
+}
+
 /* ---------- раздел 4: быстрая запись (дата, работа, этаж, объём), остальное — «Подробнее» ---------- */
 let REF={}; try{ REF=JSON.parse(localStorage.getItem("pto-ref"))||{} }catch(e){}   // справочник объекта из ПТО-пульта: люди, коды материалов
 const UNITS=SECTIONS.find(s=>s.id==="s4").cols.find(c=>c[0]==="unit")[4];
@@ -449,9 +468,11 @@ function detailsS4(r,i){
     ["exec","Исполнитель (организация, бригада)"],["resp","Ответственный: Ф.И.О."]];
   let filled=0; cols.forEach(c=>{ if(r[c[0]]) filled++ });
   const js=r.jr?JOURNALS.filter(j=>j.kind===r.jr):[];
-  const spec=js.map(j=>{ const own=(state[j.id][r._id] ||= {});
-    return `<div class="subj"><div class="subt">${esc(j.title)}</div><div class="subgrid">${j.cols.filter(c=>c[3]!=="src"&&c[3]!=="calc").map(c=>
-      `<label class="field"><span>${esc(c[1])}</span>${control(c,own[c[0]]??"",`x-${j.id}-${r._id}-${c[0]}`,`data-j="${j.id}" data-id="${r._id}"`)}</label>`).join("")}</div></div>` }).join("");
+  const fld=(j,own)=>c=>`<label class="field"><span>${esc(c[1])}</span>${control(c,own[c[0]]??"",`x-${j.id}-${r._id}-${c[0]}`,`data-j="${j.id}" data-id="${r._id}"`)}</label>`;
+  const spec=js.map(j=>{ const own=(state[j.id][r._id] ||= {}), cs=j.cols.filter(c=>c[3]!=="src"&&c[3]!=="calc");
+    const site=cs.filter(c=>!isLab(c)), lab=cs.filter(isLab);
+    return `<div class="subj"><div class="subt">${esc(j.title)} — заполняет мастер</div><div class="subgrid">${site.map(fld(j,own)).join("")}</div>`+
+      (lab.length?`<div class="subt lab">Заполняет лаборатория (по протоколам)</div><div class="subgrid">${lab.map(fld(j,own)).join("")}</div>`:"")+`</div>` }).join("");
   return `<tr class="subrow" data-sub="${r._id}"><td></td><td colspan="7"><details data-sid="${r._id}"${openSubs.has(r._id)?" open":""}>
     <summary>Подробнее: смена, погода, исполнитель${js.length?", данные спецжурнала":""} <span class="sub">· заполнено ${filled} из ${cols.length} — можно дописать позже</span></summary>
     <div class="subgrid">${cols.map(c=>`<label class="field"><span>${esc(c[1])}</span>${control([c[0],c[1],0,c[2]||"t",c[3]],r[c[0]]??"",`s4-${i}-${c[0]}`,`data-r="${i}"`)}</label>`).join("")}</div>${spec}</details></td></tr>`;
@@ -468,7 +489,7 @@ function renderS4(m){
     <td><button class="rowdel" data-del="${i}" title="Удалить строку" aria-label="Удалить строку ${i+1}">×</button></td></tr>`+detailsS4(r,i)).join("");
   m.innerHTML=`<section class="sec"><h2>${esc(sec.title)}</h2>
     <p class="hint">Быстрая запись: дата, работа, этаж, объём. Работа выбирается из списка (или вписывается новая — она добавится в «Работы и акты»). Оси, отметки, погоду и остальное можно дописать позже.</p>
-    ${lagHtml()}
+    ${lagHtml()}${labHtml()}
     <div class="quick" id="quick">
       <label>Дата<input type="date" id="q-date" value="${esc(q.date)}"></label>
       <label class="qw">Работа<input type="text" id="q-work" list="worksList" placeholder="начните вводить — подскажет из списка" value="${esc(q.work)}"></label>
@@ -628,7 +649,8 @@ function renderChecks(){
   if(current==="s1") state.s1.forEach((r,i)=>{ if(!r.att) out.push(`Строка ${i+1}: нет приказа о назначении / аттестата.`) });
   if(current==="bj") jrows(JOURNALS.find(j=>j.id==="bj")).forEach((r,i)=>{
     if(!r.own.cls) out.push(`Строка ${i+1}: не указан класс бетона.`);
-    if(!r.own.samples) out.push(`Строка ${i+1}: не указаны отобранные образцы.`);
+    if(!r.own.samples) out.push(`Строка ${i+1}: лаборатория — не указаны отобранные образцы.`);
+    [[7,"r7"],[28,"r28"]].forEach(([n,k])=>{ if(!r.own[k]&&r.src.date&&addDays(r.src.date,n)<=today()) out.push(`Строка ${i+1}: лаборатория — пора внести прочность ${n} сут (с ${fmtDate(addDays(r.src.date,n))}).`) });
     const p=pct(r.own); if(p&&parseInt(p)<100) out.push(`Строка ${i+1}: прочность в 28 сут ниже проектной (${p}).`);
   });
   if(current==="uh") jrows(JOURNALS.find(j=>j.id==="uh")).forEach((r,i)=>{

@@ -68,6 +68,18 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
   st = await jstate(j);
   check(st.s4.some(r => r.date === ago(1) && r.work === 'Работы не производились' && !r.wid), '«работ не было» — запись «Работы не производились»');
   check(/Дописать оси, отметки: 6 зап\./.test(await j.textContent('#checks')), 'сводка «что дописать» вместо замечаний к каждой строке');
+  // бетон: графы лаборатории отдельно, напоминание о сроках испытаний
+  const lab = await j.textContent('.lag.lab').catch(() => '');
+  check(/Бетонирование плиты перекрытия, 2 этаж — 7 сут \(с 19\.03\.2026\)/.test(lab) && /28 сут \(с 09\.04\.2026\)/.test(lab) && !/3 этаж/.test(lab),
+    'бетон: напоминание о прочности 7 и 28 суток (только где срок наступил)');
+  const conc = st.s4.find(r => r.date === '2026-03-12');
+  await j.click(`details[data-sid="${conc._id}"] summary`);
+  const det = await j.textContent(`details[data-sid="${conc._id}"]`);
+  check(/Журнал бетонных работ — заполняет мастер/.test(det) && /Заполняет лаборатория/.test(det) && det.indexOf('Подвижность') < det.indexOf('Заполняет лаборатория') && det.indexOf('Прочность 28') > det.indexOf('Заполняет лаборатория'),
+    'бетон: «Подробнее» — блоки «мастер» (подвижность, t смеси) и «лаборатория» (образцы, прочность)');
+  await j.fill(`[data-j="bj"][data-id="${conc._id}"][data-k="r7"]`, '21,5'); await j.fill(`[data-j="bj"][data-id="${conc._id}"][data-k="r28"]`, '31'); await p.waitForTimeout(400);
+  await j.click('nav.tabs [data-tab="s4"]'); await p.waitForTimeout(300);
+  check(!(await j.$('.lag.lab')), 'прочность внесена — напоминание исчезло');
 
   // печать за период: этаж — в графе «Место»
   await j.evaluate(() => { window.print = () => {}; });
