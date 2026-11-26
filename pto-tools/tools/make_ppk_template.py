@@ -63,6 +63,11 @@ def main():
             out.append(m.group(0))
     out.append(xml[pos:])
     new = "".join(out)
+    # после подписей (после их таблицы, в конце документа) — «Приложения»: исп. схема, акты скрытых работ, протоколы;
+    # нет данных — блока нет
+    tail = set_text(paras[41].group(0), "{#attach_text}Приложения:") + set_text(paras[43].group(0), "{attach_text}{/attach_text}")
+    cut = new.rfind("<w:sectPr")
+    new = new[:cut] + tail + new[cut:]
     with zipfile.ZipFile(DST, "w", zipfile.ZIP_DEFLATED) as z:
         for item in zin.infolist():
             z.writestr(item, new.encode("utf-8") if item.filename == "word/document.xml" else zin.read(item.filename))

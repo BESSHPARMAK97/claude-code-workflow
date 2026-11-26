@@ -113,6 +113,11 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
   await j.fill(`[data-w="${ids[1]}"][data-k="no"]`, 'АОСР-102'); await j.press(`[data-w="${ids[1]}"][data-k="no"]`, 'Tab'); await p.waitForTimeout(300);
   if (!(await j.isVisible(`[data-w="${ids[1]}"][data-k="next"]`))) await j.click(`details[data-sid="w-${ids[1]}"] summary`);
   await j.fill(`[data-w="${ids[1]}"][data-k="next"]`, 'устройство стяжки'); await p.waitForTimeout(500);
+  // акт промежуточной приёмки: входящие акты скрытых работ подставляются сами (по этажам и датам)
+  if (!(await j.isVisible(`[data-w="${ids[1]}"][data-k="incl"]`))) await j.click(`details[data-sid="w-${ids[1]}"] summary`);
+  check(await j.getAttribute(`[data-w="${ids[1]}"][data-k="incl"]`, 'placeholder') === 'АОСР-101' && !(await j.$(`[data-w="${ids[0]}"][data-k="incl"]`)),
+    'промежуточная приёмка: подсказка входящих актов скрытых работ (АОСР-101), у АОСР такого поля нет');
+  await j.fill(`[data-w="${ids[1]}"][data-k="scheme"]`, 'ИС-12'); await j.fill(`[data-w="${ids[1]}"][data-k="tests"]`, 'протокол № 45 от 09.04.2026'); await p.waitForTimeout(400);
   st = await jstate(j);
   const arm = st.works.find(w => /^Армирование/.test(w.name));
   check(st.s3.some(x => x.no === 'АОСР-101' && /этажи 2, 3, 4/.test(x.name)) && st.s4.filter(r => r.wid === arm._id).every(r => r.aosr === 'АОСР-101'),
@@ -128,6 +133,8 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
   const xml = d ? new PizZip(fs.readFileSync(kp)).file('word/document.xml').asText().replace(/<[^>]+>/g, '') : '';
   check(/промежуточной приёмки ответственных конструкций/.test(xml) && /Конструкции принимаются/.test(xml) && /Приложение Е/.test(xml) && /промежуточной приёмки ответственных конструкций — 1/.test(xml),
     'комплект: акт промежуточной приёмки по форме (приложение Е) и счёт на титуле');
+  check(/Приложения:/.test(xml) && /Исполнительная геодезическая схема № ИС-12/.test(xml) && /Акты освидетельствования скрытых работ № АОСР-101/.test(xml) && /Протоколы испытаний: протокол № 45/.test(xml)
+    && (xml.match(/Приложения:/g) || []).length === 1, 'акт промежуточной приёмки: приложения — схема, входящие АОСР, протоколы (в АОСР блока нет)');
   check(/Из них актов промежуточной приёмки ответственных конструкций: 1/.test(rep), 'отчёт: сколько актов промежуточной приёмки');
   check(xml.includes('АОСР-101') && /«10» марта 2026/.test(xml) && xml.includes(`«${ago(0).slice(8)}»`), 'в акте даты работ — из записей журнала (первая и последняя)');
 
@@ -154,6 +161,20 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
   [a] = await frames(p);
   check(/загрузите один раз реестр Excel объекта/.test(await a.textContent('#report')), 'без реестра: подсказка загрузить реестр один раз');
   await ctx.close();
+
+  // ---------- журнал на телефоне: карточки записей, без горизонтальной прокрутки
+  {
+    const { devices } = require('playwright');
+    const c2 = await b.newContext({ ...devices['iPhone 13'] });
+    const ph = await c2.newPage(); ph.on('pageerror', e => errs.push(String(e)));
+    await ph.goto('file://' + path.resolve(ROOT, '../templates/zhurnal-proizvodstva-rabot/zhurnal-proizvodstva-rabot.html')); await ph.waitForTimeout(400);
+    await ph.fill('#q-work', 'Армирование плиты перекрытия'); await ph.fill('#q-floor', '5'); await ph.fill('#q-vol', '3'); await ph.click('#qAdd'); await ph.waitForTimeout(300);
+    const m = await ph.evaluate(() => ({ sw: document.documentElement.scrollWidth, w: innerWidth,
+      disp: getComputedStyle(document.querySelector('tr.rec')).display, head: getComputedStyle(document.querySelector('.s4t thead')).display,
+      fs: getComputedStyle(document.getElementById('q-work')).fontSize }));
+    check(m.sw <= m.w && m.disp === 'grid' && m.head === 'none' && m.fs === '16px', `телефон: запись — карточка, без прокрутки вбок, поля 16px (${m.sw}/${m.w}, ${m.disp}, ${m.fs})`);
+    await c2.close();
+  }
 
   if (errs.length) { bad++; console.log('Ошибки JS:', errs); }
   await b.close(); process.exit(bad ? 1 : 0);
