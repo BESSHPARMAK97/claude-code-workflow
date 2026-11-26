@@ -123,6 +123,39 @@ table.ed td.ck input{width:auto}
 .toast.on{opacity:1}
 .note{max-width:1440px;margin:14px auto 0;padding:0 max(16px,env(safe-area-inset-left));color:var(--muted);font-size:12px}
 #printArea{display:none}
+@media (max-width:700px){
+  header.top{padding:10px 12px}
+  .top-in{gap:8px}
+  h1{font-size:17px}
+  .top-in .sub{display:none}
+  .actions{gap:6px}
+  .actions button{padding:6px 10px;font-size:12.5px}
+  section.sec{padding:14px 12px;border-radius:0 8px 8px 8px}
+  .sec .hint{font-size:12.5px;margin-bottom:10px}
+  input,textarea,select{font-size:16px}
+  .quick{grid-template-columns:1fr 1fr;padding:10px}
+  .quick .qw{grid-column:1/-1}
+  .quick #qAdd{grid-column:1/-1;padding:12px;font-size:15px}
+  .tablewrap{border:none;overflow:visible}
+  table.ed.s4t{min-width:0!important;display:block}
+  table.ed.s4t thead{display:none}
+  table.ed.s4t tbody{display:block}
+  table.ed.s4t tr.rec{display:grid;grid-template-columns:1fr 1fr 1fr auto;gap:2px 8px;border:1px solid var(--line);border-radius:8px 8px 0 0;margin-top:10px;padding:6px 6px 2px;background:var(--panel)}
+  table.ed.s4t tr.rec td{border:none;padding:0;background:transparent!important}
+  table.ed.s4t td.n{display:none}
+  table.ed.s4t td.c-date{grid-column:1/4}
+  table.ed.s4t td.c-del{grid-column:4;grid-row:1;text-align:right}
+  table.ed.s4t td.c-work{grid-column:1/-1}
+  table.ed.s4t td.c-work input{font-weight:600}
+  table.ed.s4t td.c-place{grid-column:1/-1}
+  table.ed.s4t td[data-l]::before{content:attr(data-l);display:block;font-size:11px;color:var(--muted);padding:2px 8px 0}
+  table.ed.s4t tr.subrow{display:block;border:1px solid var(--line);border-top:1px dashed var(--line);border-radius:0 0 8px 8px}
+  table.ed.s4t tr.subrow td{display:block;border:none}
+  table.ed.s4t tr.subrow td:first-child{display:none}
+  .subgrid{grid-template-columns:1fr}
+  .period{margin-left:0}
+  .lag .day{white-space:normal}
+}
 @media (prefers-reduced-motion:reduce){.toast,button{transition:none}}
 
 @media print{
@@ -486,14 +519,14 @@ function detailsS4(r,i){
 }
 function renderS4(m){
   const sec=SECTIONS.find(s=>s.id==="s4"), rows=state.s4;
-  const body=rows.map((r,i)=>`<tr class="${r._ex?"example":""}"><td class="n">${i+1}</td>
-    <td>${control(["date","Дата",0,"d"],r.date||"",`s4-${i}-date`,`data-r="${i}"`)}</td>
-    <td><input type="text" list="worksList" id="s4-${i}-work" data-r="${i}" data-k="work" aria-label="Работа" value="${esc(r.work)}">${r.aosr?`<span class="tagA">АОСР № ${esc(r.aosr)}</span>`:""}${actLinks(r)}</td>
-    <td><input type="text" id="s4-${i}-floor" data-r="${i}" data-k="floor" aria-label="Этаж" value="${esc(r.floor)}"></td>
-    <td>${control(["vol","Объём",0,"n"],r.vol??"",`s4-${i}-vol`,`data-r="${i}"`)}</td>
-    <td>${control(["unit","Ед. изм.",0,"s",UNITS],r.unit??"",`s4-${i}-unit`,`data-r="${i}"`)}</td>
-    <td><textarea rows="1" id="s4-${i}-place" data-r="${i}" data-k="place" aria-label="Оси, отметки" placeholder="дописать">${esc(r.place)}</textarea></td>
-    <td><button class="rowdel" data-del="${i}" title="Удалить строку" aria-label="Удалить строку ${i+1}">×</button></td></tr>`+detailsS4(r,i)).join("");
+  const body=rows.map((r,i)=>`<tr class="rec ${r._ex?"example":""}"><td class="n">${i+1}</td>
+    <td class="c-date">${control(["date","Дата",0,"d"],r.date||"",`s4-${i}-date`,`data-r="${i}"`)}</td>
+    <td class="c-work"><input type="text" list="worksList" id="s4-${i}-work" data-r="${i}" data-k="work" aria-label="Работа" value="${esc(r.work)}">${r.aosr?`<span class="tagA">АОСР № ${esc(r.aosr)}</span>`:""}${actLinks(r)}</td>
+    <td class="c-floor" data-l="Этаж"><input type="text" id="s4-${i}-floor" data-r="${i}" data-k="floor" aria-label="Этаж" value="${esc(r.floor)}"></td>
+    <td class="c-vol" data-l="Объём">${control(["vol","Объём",0,"n"],r.vol??"",`s4-${i}-vol`,`data-r="${i}"`)}</td>
+    <td class="c-unit" data-l="Ед.">${control(["unit","Ед. изм.",0,"s",UNITS],r.unit??"",`s4-${i}-unit`,`data-r="${i}"`)}</td>
+    <td class="c-place" data-l="Оси, отметки"><textarea rows="1" id="s4-${i}-place" data-r="${i}" data-k="place" aria-label="Оси, отметки" placeholder="дописать">${esc(r.place)}</textarea></td>
+    <td class="c-del"><button class="rowdel" data-del="${i}" title="Удалить строку" aria-label="Удалить строку ${i+1}">×</button></td></tr>`+detailsS4(r,i)).join("");
   m.innerHTML=`<section class="sec"><h2>${esc(sec.title)}</h2>
     <p class="hint">Быстрая запись: дата, работа, этаж, объём. Работа выбирается из списка (или вписывается новая — она добавится в «Работы и акты»). Оси, отметки, погоду и остальное можно дописать позже.</p>
     ${lagHtml()}${labHtml()}
@@ -505,7 +538,7 @@ function renderS4(m){
       <label>Ед. изм.<select id="q-unit">${UNITS.map(u=>`<option${u===q.unit?" selected":""}>${esc(u)}</option>`).join("")}</select></label>
       <button class="primary" id="qAdd" type="button">Добавить запись</button>
     </div>
-    <div class="tablewrap"><table class="ed" style="min-width:900px"><thead><tr><th style="text-align:center">№</th><th style="width:150px">Дата</th><th>Работа</th>
+    <div class="tablewrap"><table class="ed s4t" style="min-width:900px"><thead><tr><th style="text-align:center">№</th><th style="width:150px">Дата</th><th>Работа</th>
       <th style="width:80px">Этаж</th><th style="width:90px">Объём</th><th style="width:95px">Ед. изм.</th><th style="width:22%">Оси, отметки</th><th></th></tr></thead>
       <tbody>${body||`<tr><td colspan="8" class="empty">Записей пока нет.</td></tr>`}</tbody></table></div>
     <div class="bar">
@@ -556,8 +589,20 @@ function quickAdd(){
 const WK_ACT=[["place","Оси, отметки для акта (пусто — из записей)"],["drawings","Чертежи (марка, листы)"],["materials","Материалы: коды партий через ; (из реестра)",0,"codesList"],
   ["evidence","Доп. доказательства (исп. схемы, протоколы)"],["deviations","Отклонения от проекта (пусто — отсутствуют)"],["next","Последующие работы (пусто — следующий акт)"],
   ["cRep","Представитель СМО",0,"peopleList"],["tRep","Представитель технадзора",0,"peopleList"],["aRep","Представитель авторского надзора (пусто — нет)",0,"peopleList"],
-  ["sRep","Представитель субподрядчика (пусто — нет)",0,"peopleList"],["actDate","Дата акта (пусто — впишете от руки)","d"]];
+  ["sRep","Представитель субподрядчика (пусто — нет)",0,"peopleList"],["actDate","Дата акта (пусто — впишете от руки)","d"],
+  ["incl","Акты скрытых работ, входящие в конструкцию (пусто — подставятся сами)"],["scheme","Исполнительная геодезическая схема №"],["tests","Протоколы испытаний (прочность бетона, сварка)"]];
 const PPK_SKIP=["materials","evidence","sRep"];   // в форме промежуточной приёмки этих пунктов нет
+const PPK_ONLY=["incl","scheme","tests"];          // приложения — только к акту промежуточной приёмки
+// акты скрытых работ, входящие в конструкцию: по тем же этажам (если указаны), не позже окончания приёмки
+function inclAuto(w){
+  const fl=floorsOf(w._id), sp=spanOf(w._id);
+  return state.works.filter(x=>x!==w&&!x._ex&&x.act&&x.kind!=="ppk"&&x.no).filter(x=>{
+    const xf=floorsOf(x._id), xs=spanOf(x._id);
+    if(fl.length&&xf.length&&!xf.some(f=>fl.includes(f))) return false;
+    if(sp&&xs&&xs[0]>sp[1]) return false;
+    return true;
+  }).sort((a,b)=>((spanOf(a._id)||[""])[0]).localeCompare((spanOf(b._id)||[""])[0])).map(x=>x.no);
+}
 const recsOfWork=id=>state.s4.filter(r=>r.wid===id&&r.date&&!r._ex);
 function spanOf(id){ const ds=recsOfWork(id).map(r=>r.date).sort(); return ds.length?[ds[0],ds[ds.length-1]]:null }
 function floorsOf(id){ return [...new Set(recsOfWork(id).map(r=>String(r.floor||"").trim()).filter(Boolean))].sort((a,b)=>(parseFloat(a)||0)-(parseFloat(b)||0)||a.localeCompare(b)) }
@@ -600,8 +645,8 @@ function renderWorks(m){
       <td>${w.act?`<input type="text" data-w="${w._id}" data-k="no" aria-label="№ акта" placeholder="авто" value="${esc(w.no)}">`:""}</td>
       <td><button class="rowdel" data-wdel="${w._id}" title="Удалить работу" aria-label="Удалить работу ${i+1}">×</button></td></tr>`+
       (w.act?`<tr class="subrow"><td></td><td colspan="8"><details data-sid="w-${w._id}"${openSubs.has("w-"+w._id)?" open":""}><summary>Данные для акта ${w.kind==="ppk"?"промежуточной приёмки ответственных конструкций":"освидетельствования скрытых работ"} <span class="sub">· даты акта — по записям: ${sp?esc(fmtDate(sp[0])+" – "+fmtDate(sp[1])):"записей нет"}</span></summary>${w.kind==="ppk"?PPK_NOTE:""}
-        <div class="subgrid">${WK_ACT.filter(c=>!(w.kind==="ppk"&&PPK_SKIP.includes(c[0]))).map(c=>`<label class="field"><span>${esc(w.kind==="ppk"&&c[0]==="aRep"?"Представитель проектной организации (пусто — впишете от руки)":c[1])}</span>${c[2]==="d"?`<input type="date" data-w="${w._id}" data-k="${c[0]}" value="${esc(w[c[0]])}">`:
-          `<input type="text" data-w="${w._id}" data-k="${c[0]}"${c[3]?` list="${c[3]}"`:""} value="${esc(w[c[0]])}">`}</label>`).join("")}</div></details></td></tr>`:"");
+        <div class="subgrid">${WK_ACT.filter(c=>w.kind==="ppk"?!PPK_SKIP.includes(c[0]):!PPK_ONLY.includes(c[0])).map(c=>`<label class="field"><span>${esc(w.kind==="ppk"&&c[0]==="aRep"?"Представитель проектной организации (пусто — впишете от руки)":c[1])}</span>${c[2]==="d"?`<input type="date" data-w="${w._id}" data-k="${c[0]}" value="${esc(w[c[0]])}">`:
+          `<input type="text" data-w="${w._id}" data-k="${c[0]}"${c[3]?` list="${c[3]}"`:""}${c[0]==="incl"?` placeholder="${esc(inclAuto(w).join(", ")||"нет подходящих актов")}"`:""} value="${esc(w[c[0]])}">`}</label>`).join("")}</div></details></td></tr>`:"");
   }).join("");
   m.innerHTML=`<section class="sec"><h2>Работы и акты</h2>
     <p class="hint">Один список работ на объект: записи журнала ссылаются на работу, а акт оформляется по работе, у которой выбран вид акта: скрытых работ (приложение Д) или промежуточной приёмки ответственных конструкций (приложение Е). Даты акта берутся из записей журнала (первая и последняя), этажи — из записей. Люди, организации и материалы для актов — из реестра Excel объекта, загруженного в ПТО-пульт.</p>
@@ -618,7 +663,8 @@ function actPayload(){
   return state.works.filter(w=>w.act&&!w._ex).map(w=>{ const sp=spanOf(w._id);
     const places=[...new Set(recsOfWork(w._id).map(r=>String(r.place||"").trim()).filter(Boolean))];
     return {kind:w.kind==="ppk"?"ppk":"aosr",name:w.name,no:w.no||"",start:sp?sp[0]:"",end:sp?sp[1]:"",floors:floorsOf(w._id),place:w.place||places.join("; "),drawings:w.drawings||"",materials:w.materials||"",
-      evidence:w.evidence||"",deviations:w.deviations||"",next:w.next||"",cRep:w.cRep||"",tRep:w.tRep||"",aRep:w.aRep||"",sRep:w.sRep||"",actDate:w.actDate||""} });
+      evidence:w.evidence||"",deviations:w.deviations||"",next:w.next||"",cRep:w.cRep||"",tRep:w.tRep||"",aRep:w.aRep||"",sRep:w.sRep||"",actDate:w.actDate||"",
+      incl:w.kind==="ppk"?(String(w.incl||"").trim()||inclAuto(w).join(", ")):"",scheme:w.scheme||"",tests:w.tests||""} });
 }
 function actLinks(r){ return aosrNos(r).map(n=>actOf(n)).filter(Boolean).map(a=>`<button type="button" class="lnk" data-goto="s3" data-no="${esc(normNo(a.no))}" title="Открыть акт в разделе 3">к акту</button>`).join("") }
 function goTo(id,match){

@@ -18,7 +18,7 @@
     ["title", /^наименование/i], ["drawings", /^черт/i], ["materials", /^материал/i], ["evidence", /^доп/i],
     ["deviations", /^отклонен/i], ["next_works", /^последующ/i], ["performer", /^(исполнитель|организация смо)/i],
     ["row_contractor_rep", /^представитель смо/i], ["row_tech_rep", /^представитель технадзора/i],
-    ["row_author_rep", /^представитель авторского/i], ["sub_rep", /субподряд/i]
+    ["row_author_rep", /^представитель авторского/i], ["sub_rep", /субподряд/i], ["attach", /^приложени/i]
   ];
   var TPL_SPEC = [
     ["name", /^назван/i], ["title", /^наименование/i], ["location", /^место/i], ["drawings", /^черт/i],
@@ -395,7 +395,8 @@
         evidence: clean(w.evidence) || "не приложены", deviations: clean(w.deviations) || "отсутствуют",
         date_text: fmtLong(d), start_text: fmtLong(s, BLANK_SHORT), end_text: fmtLong(e, BLANK_SHORT),
         next_works: clean(w.next_works), performer: clean(w.performer) || obj.contractor,
-        sub_rep: isNone(sub) ? "" : sub, sub_sign: isNone(sub) ? "" : shortName(sub)
+        sub_rep: isNone(sub) ? "" : sub, sub_sign: isNone(sub) ? "" : shortName(sub),
+        attach_text: ppk ? clean(w.attach) : ""   // «Приложения» — только в акте промежуточной приёмки
       });
       var doc = new Docxtemplater(new PizZip(ppk ? b64ToBytes(window.AOSR_TEMPLATE_PPK_B64) : templateBytes), { paragraphLoop: true, linebreaks: true, nullGetter: function () { return ""; } });
       doc.render(ctx);
@@ -735,7 +736,15 @@
   // акты по списку работ журнала: даты — из записей журнала, люди и материалы — из запомненного реестра
   var JW_HEAD = ["Формировать", "Вид акта", "Наименование работ", "Участок", "Место (оси, отметки)", "Чертежи", "Материалы (коды через ;)", "Представитель СМО",
     "Представитель технадзора", "№ акта", "Дата акта (пусто — от руки)", "Начало работ", "Окончание работ", "Доп. доказательства", "Отклонения",
-    "Последующие работы", "Представитель авторского надзора", "Представитель субподрядчика"];
+    "Последующие работы", "Представитель авторского надзора", "Представитель субподрядчика", "Приложения"];
+  // приложения к акту промежуточной приёмки: исп. схема, акты скрытых работ конструкции, протоколы испытаний
+  function attachOf(w) {
+    if (w.kind !== "ppk") return "";
+    var out = ["Исполнительная геодезическая схема" + (clean(w.scheme) ? " № " + clean(w.scheme) : "")];
+    if (clean(w.incl)) out.push("Акты освидетельствования скрытых работ № " + clean(w.incl));
+    if (clean(w.tests)) out.push("Протоколы испытаний: " + clean(w.tests));
+    return out.map(function (x, i) { return (i + 1) + ". " + x; }).join("\n");
+  }
   function actsFromJournal(works) {
     var b64 = null; try { b64 = localStorage.getItem(REG_KEY); } catch (e) {}
     if (!b64) {
@@ -750,7 +759,7 @@
       var fl = w.floors || [], floorTxt = fl.length ? (fl.length > 1 ? "этажи " : "этаж ") + fl.join(", ") : "";
       var next = clean(w.next) || (list[i + 1] ? lowerFirst(clean(list[i + 1].name)) : "");
       aoa.push(["да", w.kind === "ppk" ? "промежуточной приёмки" : "АОСР", w.name, "", ([floorTxt, clean(w.place)].filter(Boolean).join(", ").replace(/^(?=.)/, ", ")), w.drawings, w.materials, w.cRep, w.tRep, w.no, w.actDate,
-        w.start, w.end, w.evidence, w.deviations, next, w.aRep || "нет", w.sRep || "нет"]);
+        w.start, w.end, w.evidence, w.deviations, next, w.aRep || "нет", w.sRep || "нет", attachOf(w)]);
     });
     wb.Sheets["Работы"] = XLSX.utils.aoa_to_sheet(aoa);
     if (wb.SheetNames.indexOf("Работы") < 0) wb.SheetNames.push("Работы");
