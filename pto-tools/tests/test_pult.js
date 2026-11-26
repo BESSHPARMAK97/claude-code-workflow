@@ -95,6 +95,11 @@ const ago = n => { const d = new Date(); d.setDate(d.getDate() - n); return iso(
   const ppl = await j.$$eval('#peopleList option', xs => xs.map(x => x.value));
   check(ppl.length === 6, 'в журнале — люди из реестра (для представителей в акте)');
   const ids = sels;
+  const about = await j.textContent('details.about');
+  check(/Когда оформлять/.test(about) && /до того, как их нагружают/.test(about) && /исполнительную геодезическую схему/.test(about), 'описание: когда оформлять акт скрытых работ и акт промежуточной приёмки');
+  await j.click(`details[data-sid="w-${ids[1]}"] summary`);
+  check(/до её нагружения и последующих работ/.test(await j.textContent(`details[data-sid="w-${ids[1]}"]`)), 'памятка в данных акта промежуточной приёмки');
+  await j.click(`details[data-sid="w-${ids[1]}"] summary`);
   check(!(await j.$(`[data-w="${ids[1]}"][data-k="materials"]`)) && !!(await j.$(`[data-w="${ids[0]}"][data-k="materials"]`)), 'промежуточная приёмка: без материалов и доп. доказательств (их нет в форме)');
   for (const id of ids) {
     await j.click(`details[data-sid="w-${id}"] summary`);

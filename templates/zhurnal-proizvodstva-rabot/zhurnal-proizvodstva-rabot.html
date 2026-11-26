@@ -96,6 +96,13 @@ table.ed tr.hl td{box-shadow:inset 0 0 0 9999px color-mix(in srgb,var(--accent) 
 .subt.lab{color:var(--accent);margin-top:10px}
 table.ed th.lab{background:color-mix(in srgb,var(--accent-soft) 60%,var(--auto-head))}
 .labt{display:block;font-weight:400;font-size:10.5px;color:var(--accent);margin-top:2px}
+.about{margin:0 0 14px;border:1px solid var(--line);border-radius:8px;background:var(--bg)}
+.about summary{cursor:pointer;color:var(--accent);font-weight:500;padding:9px 12px}
+.about-in{padding:0 14px 10px;font-size:13px;max-width:110ch}
+.about-in p,.about-in ul{margin:6px 0}
+.about-in li{margin:3px 0}
+.about .src{color:var(--muted);font-size:12px}
+.ppk-note{font-size:12.5px;color:var(--fg);background:var(--accent-soft);border-radius:6px;padding:7px 10px;margin:4px 0 10px}
 .tagA{display:inline-block;font-size:11.5px;color:var(--accent);margin:2px 0 0 8px}
 table.ed td.calc{color:var(--muted);font-size:12.5px;padding:8px}
 table.ed td.ck{text-align:center;padding-top:9px}
@@ -566,6 +573,19 @@ function syncWork(w){
   a.name=w.name+(fl.length?(fl.length>1?", этажи ":", этаж ")+fl.join(", "):"")+(w.place?", "+w.place:"");
   if(w.actDate) a.date=w.actDate;
 }
+const ACT_ABOUT=`<details class="about"><summary>Когда оформлять акт скрытых работ, а когда — акт промежуточной приёмки</summary>
+<div class="about-in">
+<p><b>Акт освидетельствования скрытых работ</b> (приложение Д) — на работы, которые закрываются следующими работами и после этого недоступны для проверки: основание и подготовка, гидроизоляция, армирование перед бетонированием, закладные детали, утепление под облицовкой, сварные швы перед окраской и т. п.</p>
+<p><b>Акт промежуточной приёмки ответственных конструкций</b> (приложение Е) — когда <b>закончена отдельная ответственная конструкция, ярус конструкций или этаж</b>, от которых зависят прочность и устойчивость здания, и <b>до того, как их нагружают или продолжают работы</b> на них. Примеры: фундаменты и фундаментная плита, монолитный каркас этажа (колонны, стены, перекрытие), несущие металлические и сборные железобетонные конструкции, подпорные стены, арки, своды.</p>
+<ul>
+<li><b>Какие конструкции принимать</b> — по перечню, установленному проектной документацией и договором подряда (проектная организация указывает перечень ответственных конструкций в составе проекта).</li>
+<li><b>Что подготовить к приёмке:</b> исполнительную геодезическую схему конструкции, документы об испытаниях (протоколы лаборатории о прочности бетона, контроле сварных соединений и т. п.) и акты всех скрытых работ, входящих в эту конструкцию. Разбивочные оси и монтажные ориентиры сохранить до приёмки.</li>
+<li><b>Кто участвует:</b> исполнитель работ и технадзор заказчика; авторский надзор и ГАСК — по своему усмотрению.</li>
+<li><b>Пока акт не подписан</b>, следующие работы на этой конструкции вести и нагружать её <b>запрещено</b>.</li>
+</ul>
+<p class="src">По СН РК 1.03-00-2011, п. 6.8.5.1–6.8.5.8 и приложение Б (в редакции 2022 г. нумерация пунктов может отличаться — сверьте с действующим текстом).</p>
+</div></details>`;
+const PPK_NOTE=`<div class="ppk-note">Оформляется, когда конструкция (ярус, этаж) закончена, — до её нагружения и последующих работ. Приложить: исполнительную геодезическую схему, протоколы испытаний (прочность бетона, сварка), акты скрытых работ по этой конструкции.</div>`;
 function renderWorks(m){
   const ws=state.works.filter(w=>!w._ex), inPult=window.parent!==window;
   const body=ws.map((w,i)=>{ const sp=spanOf(w._id), n=recsOfWork(w._id).length, fl=floorsOf(w._id);
@@ -579,12 +599,13 @@ function renderWorks(m){
         `<option value="${v}"${(w.act?(w.kind==="ppk"?"ppk":"aosr"):"")===v?" selected":""}>${l}</option>`).join("")}</select></td>
       <td>${w.act?`<input type="text" data-w="${w._id}" data-k="no" aria-label="№ акта" placeholder="авто" value="${esc(w.no)}">`:""}</td>
       <td><button class="rowdel" data-wdel="${w._id}" title="Удалить работу" aria-label="Удалить работу ${i+1}">×</button></td></tr>`+
-      (w.act?`<tr class="subrow"><td></td><td colspan="8"><details data-sid="w-${w._id}"${openSubs.has("w-"+w._id)?" open":""}><summary>Данные для акта ${w.kind==="ppk"?"промежуточной приёмки ответственных конструкций":"освидетельствования скрытых работ"} <span class="sub">· даты акта — по записям: ${sp?esc(fmtDate(sp[0])+" – "+fmtDate(sp[1])):"записей нет"}</span></summary>
-        <div class="subgrid">${WK_ACT.filter(c=>!(w.kind==="ppk"&&PPK_SKIP.includes(c[0]))).map(c=>`<label class="field"><span>${esc(c[1])}</span>${c[2]==="d"?`<input type="date" data-w="${w._id}" data-k="${c[0]}" value="${esc(w[c[0]])}">`:
+      (w.act?`<tr class="subrow"><td></td><td colspan="8"><details data-sid="w-${w._id}"${openSubs.has("w-"+w._id)?" open":""}><summary>Данные для акта ${w.kind==="ppk"?"промежуточной приёмки ответственных конструкций":"освидетельствования скрытых работ"} <span class="sub">· даты акта — по записям: ${sp?esc(fmtDate(sp[0])+" – "+fmtDate(sp[1])):"записей нет"}</span></summary>${w.kind==="ppk"?PPK_NOTE:""}
+        <div class="subgrid">${WK_ACT.filter(c=>!(w.kind==="ppk"&&PPK_SKIP.includes(c[0]))).map(c=>`<label class="field"><span>${esc(w.kind==="ppk"&&c[0]==="aRep"?"Представитель проектной организации (пусто — впишете от руки)":c[1])}</span>${c[2]==="d"?`<input type="date" data-w="${w._id}" data-k="${c[0]}" value="${esc(w[c[0]])}">`:
           `<input type="text" data-w="${w._id}" data-k="${c[0]}"${c[3]?` list="${c[3]}"`:""} value="${esc(w[c[0]])}">`}</label>`).join("")}</div></details></td></tr>`:"");
   }).join("");
   m.innerHTML=`<section class="sec"><h2>Работы и акты</h2>
     <p class="hint">Один список работ на объект: записи журнала ссылаются на работу, а акт оформляется по работе, у которой выбран вид акта: скрытых работ (приложение Д) или промежуточной приёмки ответственных конструкций (приложение Е). Даты акта берутся из записей журнала (первая и последняя), этажи — из записей. Люди, организации и материалы для актов — из реестра Excel объекта, загруженного в ПТО-пульт.</p>
+    ${ACT_ABOUT}
     <div class="tablewrap"><table class="ed" style="min-width:900px"><thead><tr><th style="text-align:center">№</th><th>Наименование работы</th><th style="width:95px">Ед. изм.</th><th style="width:80px">Записей</th>
       <th style="width:100px">Этажи</th><th style="width:170px">Период по журналу</th><th style="width:190px">Акт</th><th style="width:140px">№ акта</th><th></th></tr></thead>
       <tbody>${body||`<tr><td colspan="9" class="empty">Работ пока нет — они появятся из записей раздела 4.</td></tr>`}</tbody></table></div>
